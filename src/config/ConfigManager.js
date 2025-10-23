@@ -312,9 +312,18 @@ class ConfigManager {
     this.saveConfigurations();
   }
   
+  // Reset the entire instance to initial state (for testing)
+  resetInstance() {
+    this.configs.clear();
+    this.activeProfile = 'default';
+    this.loadConfigurations();
+  }
+  
   exportConfig(profile = null) {
     const targetProfile = profile || this.activeProfile;
-    return this.configs.get(targetProfile) || this.getDefaults();
+    const config = this.configs.get(targetProfile) || this.getDefaults();
+    // Deep clone to avoid mutations
+    return JSON.parse(JSON.stringify(config));
   }
   
   importConfig(configData, profile = null) {

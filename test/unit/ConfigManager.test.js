@@ -25,6 +25,11 @@ describe('ConfigManager', () => {
     // Require fresh ConfigManager
     ConfigManager = require('../../src/config/ConfigManager.js');
     configManager = ConfigManager;
+    
+    // Reset instance to ensure clean state
+    if (configManager.resetInstance) {
+      configManager.resetInstance();
+    }
   });
 
   afterEach(() => {
