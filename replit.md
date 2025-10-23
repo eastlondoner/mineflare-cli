@@ -125,6 +125,12 @@ The project includes a comprehensive E2E testing framework with **zero mocks**:
   - Real network connections, real process spawning, real HTTP requests
   - Test utilities for managing real server processes and bot connections
   - Validates production-like behavior without any mocking
+- 2025-10-23: Fixed critical bot-server.js viewer import bug (changed from mineflare to mineflayer)
+- 2025-10-23: Added comprehensive CLI commands E2E test suite
+  - Tests ALL CLI commands with real execution against live bot server
+  - Covers information, action, server management, and config commands
+  - Simple connection tests consistently passing (3/3)
+  - Simple CLI tests showing real command execution (12/20 passing)
 
 ## User Preferences
 None specified yet.

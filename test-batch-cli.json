@@ -1,0 +1,20 @@
+{
+  "instructions": [
+    {
+      "type": "chat",
+      "params": {
+        "message": "E2E Batch Test"
+      }
+    },
+    {
+      "type": "wait",
+      "params": {
+        "duration": 100
+      }
+    },
+    {
+      "type": "stop",
+      "params": {}
+    }
+  ]
+}
