@@ -415,19 +415,43 @@ program
 
 program
   .command('move')
-  .description('Move bot')
+  .description('Move bot using absolute or relative directions')
   .option('-x <value>', 'X direction (-1 to 1)', parseFloat)
   .option('-y <value>', 'Y direction (jump if > 0)', parseFloat)
   .option('-z <value>', 'Z direction (-1 to 1)', parseFloat)
+  .option('--forward <blocks>', 'Move forward N blocks', parseFloat)
+  .option('--backward <blocks>', 'Move backward N blocks', parseFloat)
+  .option('--left <blocks>', 'Strafe left N blocks', parseFloat)
+  .option('--right <blocks>', 'Strafe right N blocks', parseFloat)
+  .option('--up <blocks>', 'Jump/fly up N blocks', parseFloat)
+  .option('--down <blocks>', 'Move down N blocks', parseFloat)
   .option('--sprint', 'Enable sprint')
   .action(async (options) => {
     try {
-      const response = await api.post('/move', {
-        x: options.x,
-        y: options.y,
-        z: options.z,
+      const moveData = {
         sprint: options.sprint
-      });
+      };
+      
+      // Check for relative movement
+      if (options.forward !== undefined || options.backward !== undefined || 
+          options.left !== undefined || options.right !== undefined ||
+          options.up !== undefined || options.down !== undefined) {
+        moveData.relative = {
+          forward: options.forward || 0,
+          backward: options.backward || 0,
+          left: options.left || 0,
+          right: options.right || 0,
+          up: options.up || 0,
+          down: options.down || 0
+        };
+      } else {
+        // Use absolute movement
+        moveData.x = options.x;
+        moveData.y = options.y;
+        moveData.z = options.z;
+      }
+      
+      const response = await api.post('/move', moveData);
       console.log(JSON.stringify(response.data, null, 2));
     } catch (error) {
       console.error('Error:', error.message);

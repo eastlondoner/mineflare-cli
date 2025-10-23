@@ -333,21 +333,102 @@ class MinecraftBotServer {
       res.json({ success: true });
     });
 
-    this.app.post('/move', (req, res) => {
+    this.app.post('/move', async (req, res) => {
       if (!this.bot) {
         return res.status(400).json({ error: 'Bot not connected' });
       }
 
-      const { x, y, z, sprint } = req.body;
+      const { x, y, z, sprint, relative } = req.body;
       
-      if (x !== undefined) this.bot.setControlState('forward', x > 0);
-      if (x !== undefined) this.bot.setControlState('back', x < 0);
-      if (z !== undefined) this.bot.setControlState('left', z < 0);
-      if (z !== undefined) this.bot.setControlState('right', z > 0);
-      if (y !== undefined && y > 0) this.bot.setControlState('jump', true);
-      if (sprint !== undefined) this.bot.setControlState('sprint', sprint);
-
-      res.json({ success: true });
+      // Handle relative movement
+      if (relative) {
+        const { forward, backward, left, right, up, down } = relative;
+        const Vec3 = require('vec3');
+        
+        // Clear any existing movement states first
+        this.bot.clearControlStates();
+        
+        // Calculate target position based on bot's current orientation
+        let targetPosition = this.bot.entity.position.clone();
+        
+        // Get the bot's looking direction
+        const yaw = this.bot.entity.yaw;
+        
+        // Calculate movement vector based on yaw
+        if (forward > 0 || backward > 0) {
+          const distance = forward > 0 ? forward : -backward;
+          targetPosition.x += -Math.sin(yaw) * distance;
+          targetPosition.z += Math.cos(yaw) * distance;
+        }
+        
+        if (left > 0 || right > 0) {
+          const distance = right > 0 ? right : -left;
+          // Strafe perpendicular to looking direction
+          targetPosition.x += Math.cos(yaw) * distance;
+          targetPosition.z += Math.sin(yaw) * distance;
+        }
+        
+        if (up > 0 || down > 0) {
+          targetPosition.y += up > 0 ? up : -down;
+        }
+        
+        // Enable sprint if requested
+        if (sprint) this.bot.setControlState('sprint', true);
+        
+        // Use pathfinding for accurate movement
+        try {
+          await this.bot.pathfinder.goto(new require('mineflayer-pathfinder').goals.GoalNear(
+            targetPosition.x,
+            targetPosition.y,
+            targetPosition.z,
+            0
+          ));
+          res.json({ 
+            success: true, 
+            moved_to: {
+              x: Math.floor(targetPosition.x),
+              y: Math.floor(targetPosition.y),
+              z: Math.floor(targetPosition.z)
+            },
+            from: {
+              x: Math.floor(this.bot.entity.position.x),
+              y: Math.floor(this.bot.entity.position.y),
+              z: Math.floor(this.bot.entity.position.z)
+            }
+          });
+        } catch (error) {
+          // Fallback to simple movement if pathfinding fails
+          const timeout = Math.max(1000, Math.abs(forward || backward || left || right || 0) * 250);
+          
+          // Set control states for movement
+          if (forward > 0) this.bot.setControlState('forward', true);
+          if (backward > 0) this.bot.setControlState('back', true);
+          if (left > 0) this.bot.setControlState('left', true);
+          if (right > 0) this.bot.setControlState('right', true);
+          if (up > 0) this.bot.setControlState('jump', true);
+          
+          // Wait for movement then stop
+          setTimeout(() => {
+            this.bot.clearControlStates();
+          }, timeout);
+          
+          res.json({ 
+            success: true, 
+            method: 'simple_movement',
+            duration_ms: timeout
+          });
+        }
+      } else {
+        // Original absolute movement
+        if (x !== undefined) this.bot.setControlState('forward', x > 0);
+        if (x !== undefined) this.bot.setControlState('back', x < 0);
+        if (z !== undefined) this.bot.setControlState('left', z < 0);
+        if (z !== undefined) this.bot.setControlState('right', z > 0);
+        if (y !== undefined && y > 0) this.bot.setControlState('jump', true);
+        if (sprint !== undefined) this.bot.setControlState('sprint', sprint);
+        
+        res.json({ success: true });
+      }
     });
 
     this.app.post('/stop', (req, res) => {
