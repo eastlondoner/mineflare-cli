@@ -15,7 +15,7 @@
         "viewDistance": "normal"
       },
       "viewer": {
-        "enabled": false,
+        "enabled": true,
         "port": 3007,
         "firstPerson": false
       },
