@@ -141,6 +141,11 @@ The project includes a comprehensive E2E testing framework with **zero mocks**:
   - Ensures native modules are built with up-to-date system libraries
   - Added clean install with --force flag to rebuild native bindings
   - Added library version output for debugging build environments
+- 2025-10-23: Fixed v1.2.0 ConfigManager toLowerCase() bug
+  - Added type checking before calling toLowerCase() on boolean config values
+  - Prevents crash when processing non-string environment variables
+  - Handles boolean values correctly whether string, boolean, or number type
+  - Validated fix with comprehensive test suite
 
 ## User Preferences
 None specified yet.
