@@ -182,7 +182,12 @@ class ConfigManager {
           if (spec.type === 'number') {
             value = parseInt(value);
           } else if (spec.type === 'boolean') {
-            value = value.toLowerCase() === 'true';
+            // Check if value is a string before calling toLowerCase()
+            if (typeof value === 'string') {
+              value = value.toLowerCase() === 'true';
+            } else {
+              value = Boolean(value);
+            }
           }
         }
         

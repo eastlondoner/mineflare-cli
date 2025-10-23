@@ -170,7 +170,7 @@ program
       });
       rl.close();
       
-      if (answer.toLowerCase() !== 'y') {
+      if (answer && answer.toLowerCase() !== 'y') {
         console.log('Reset cancelled');
         return;
       }
