@@ -27,6 +27,11 @@ jobs:
             target: bun-linux-x64-baseline
             output: mineflare-linux-x64-baseline
             
+          - name: linux-arm64
+            os: ubuntu-latest
+            target: bun-linux-arm64
+            output: mineflare-linux-arm64
+            
           - name: macos-arm64
             os: macos-latest
             target: bun-darwin-arm64
