@@ -1,8 +1,10 @@
-# End-to-End Testing Suite - Zero Dependencies
+# End-to-End Testing Suite - Zero Mocks
 
 ## Philosophy
 
 This E2E testing framework operates on the principle of **absolute realism**. Unlike unit tests that mock dependencies, these tests interact with real services, real servers, and real systems to validate that our application works in production-like conditions.
+
+**Current Status**: The framework is operational with a real Minecraft Paper 1.21.8 server running on port 8099. Basic connectivity tests are passing and demonstrating real TCP connections to the actual Minecraft server.
 
 ### Core Principles
 
@@ -28,88 +30,102 @@ This E2E testing framework operates on the principle of **absolute realism**. Un
 - **Regression Prevention**: Catch issues that unit tests might miss
 - **User Experience Validation**: Ensure the system works from a user's perspective
 
-## Test Categories
+## Current Test Files
 
-### 1. Server Lifecycle Tests (`server-lifecycle.e2e.test.js`)
+### Implemented Tests
+
+#### 1. Simple Connection Test (`simple-connection.test.js`) ✅ **PASSING**
+- Verifies the Minecraft server port is open and accepting connections
+- Tests multiple simultaneous TCP connections
+- Measures real network latency to the server
+- **Status**: All 3 tests passing with real connections
+
+#### 2. Real Minecraft Connection Test (`real-minecraft-connection.test.js`)
+- Connects real bots to the real Minecraft server
+- Tests multiple bot connections simultaneously
+- Performs real actions in the Minecraft world
+- Handles real events from the Minecraft server
+- **Status**: Framework ready, connection protocols being refined
+
+#### 3. Server Lifecycle Tests (`server-lifecycle.e2e.test.js`)
 - Real server startup and shutdown
 - Daemon mode operations
 - Process management
 - Signal handling (SIGINT, SIGTERM)
 - Port binding and conflicts
 - Configuration loading from real files
+- **Status**: Framework implemented, server startup tests in progress
 
-### 2. Bot Connection Tests (`bot-connection.e2e.test.js`)
+#### 4. Bot Connection Tests (`bot-connection.e2e.test.js`)
 - Real Minecraft server connections
 - Authentication flows
 - Network error handling
 - Reconnection logic
 - Multiple bot instances
 - Connection timeouts
+- **Status**: Framework implemented, connection tests in development
 
-### 3. Bot Interaction Tests (`bot-interaction.e2e.test.js`)
-- Movement commands on real terrain
-- Inventory management with real items
-- Chat interactions
-- Block placement and breaking
-- Entity interactions
-- Combat mechanics
-
-### 4. API Tests (`api.e2e.test.js`)
+#### 5. API Tests (`api.e2e.test.js`)
 - Real HTTP requests to running server
-- WebSocket connections
-- File uploads/downloads
-- Rate limiting
-- Authentication
-- Concurrent request handling
-
-### 5. Configuration Tests (`config.e2e.test.js`)
-- Profile switching with real effects
-- Configuration persistence
-- Import/export with real files
-- Environment variable overrides
-- Configuration validation
-
-### 6. CLI Tests (`cli.e2e.test.js`)
-- Real command execution
-- Output formatting
-- Error messages
-- Interactive prompts
+- State endpoint verification
+- Movement and action commands
+- Event streaming
 - Batch operations
-- Pipeline operations
+- **Status**: Framework ready for implementation
 
-### 7. Viewer Tests (`viewer.e2e.test.js`)
-- Real viewer startup
-- Canvas rendering
-- Screenshot generation
-- Real-time updates
-- Performance under load
+### Test Utilities
 
-### 8. Stress Tests (`stress.e2e.test.js`)
-- Multiple simultaneous connections
-- High-frequency command execution
-- Memory leak detection
-- CPU usage monitoring
-- Network bandwidth testing
+#### `test-environment.js`
+- Manages real server processes
+- Handles test lifecycle
+- Provides utilities for spawning and monitoring servers
+- **No mocks** - real process management
+
+#### `api-client.js`
+- Makes real HTTP requests to the API
+- No axios mocking - actual network calls
+- Response validation
+- Error handling utilities
+
+#### `e2e-setup.js`
+- Global test configuration
+- Environment variable management
+- Performance tracking
+- Resource cleanup
 
 ## Test Environment
 
 ### Prerequisites
 
-1. **Test Minecraft Server**: A dedicated Minecraft server for testing (can be local or Docker)
+1. **Test Minecraft Server**: Paper 1.21.8 server included in `minecraft-server/` directory
 2. **Network Access**: Tests require network connectivity
 3. **File System Access**: Tests create and modify real files
-4. **Port Availability**: Tests need ports 3000-3010 available
+4. **Port Availability**: Port 8099 for Minecraft server, ports 3000-3010 for test servers
 5. **Sufficient Resources**: CPU and memory for running server + bot + tests
+
+### Current Test Server
+
+The project includes a **real Minecraft Paper 1.21.8 server** for testing:
+
+```bash
+# The test server is already configured in minecraft-server/ directory
+# It runs on port 8099 to avoid conflicts
+# Offline mode is enabled for easy bot testing
+
+# To start manually:
+cd minecraft-server
+java -Xmx1024M -Xms1024M -jar paper-1.21.8.jar nogui
+```
 
 ### Setup
 
 The test environment can be configured via environment variables:
 
 ```bash
-# Minecraft test server configuration
+# Minecraft test server configuration (defaults for included server)
 E2E_MC_HOST=localhost          # Minecraft server host
-E2E_MC_PORT=25565              # Minecraft server port
-E2E_MC_VERSION=1.21.1          # Minecraft version
+E2E_MC_PORT=8099               # Minecraft server port (using 8099)
+E2E_MC_VERSION=1.21.8          # Minecraft version
 E2E_MC_OFFLINE=true            # Use offline mode for testing
 
 # Test configuration
@@ -126,27 +142,51 @@ E2E_MAX_API_RESPONSE=1000      # Max API response time (ms)
 
 ## Running E2E Tests
 
-### Full Suite
+### Quick Start - Run Working Tests
 ```bash
-bun test:e2e
+# Run the simple connection test (currently passing!)
+bun test test/e2e/simple-connection.test.js
+
+# This will show:
+# ✓ Server port verification
+# ✓ Multiple simultaneous connections
+# ✓ Network latency measurements
 ```
 
-### Specific Category
+### Full Test Suite
 ```bash
-bun test:e2e:server    # Server lifecycle tests
-bun test:e2e:bot       # Bot connection/interaction tests
-bun test:e2e:api       # API tests
-bun test:e2e:stress    # Stress tests
+# Run all E2E tests
+bun test test/e2e/*.test.js
+
+# Run with environment variables for the test server
+E2E_MC_HOST=localhost E2E_MC_PORT=8099 bun test test/e2e/*.test.js
+```
+
+### Specific Test Files
+```bash
+# Simple connection tests (✅ PASSING)
+bun test test/e2e/simple-connection.test.js
+
+# Real Minecraft bot connections
+bun test test/e2e/real-minecraft-connection.test.js
+
+# Server lifecycle tests
+bun test test/e2e/server-lifecycle.e2e.test.js
+
+# Bot connection tests
+bun test test/e2e/bot-connection.e2e.test.js
+
+# API endpoint tests
+bun test test/e2e/api.e2e.test.js
 ```
 
 ### With Custom Configuration
 ```bash
-E2E_MC_HOST=play.example.com E2E_MC_PORT=25565 bun test:e2e
-```
+# Point to a different Minecraft server
+E2E_MC_HOST=mc.example.com E2E_MC_PORT=25565 bun test test/e2e/*.test.js
 
-### In CI/CD Pipeline
-```bash
-bun test:e2e:ci        # Runs with CI-appropriate timeouts and settings
+# Enable verbose logging
+E2E_VERBOSE=true bun test test/e2e/*.test.js
 ```
 
 ## Test Utilities
@@ -245,19 +285,25 @@ E2E tests track and validate performance metrics:
 ### Common Issues
 
 1. **Test Minecraft Server Not Available**
-   - Ensure server is running: `docker-compose up minecraft-test`
-   - Check connectivity: `nc -zv localhost 25565`
+   - Ensure server is running: `cd minecraft-server && java -jar paper-1.21.8.jar nogui`
+   - Check connectivity: `nc -zv localhost 8099`
+   - Verify server logs in minecraft-server/logs/
 
 2. **Port Conflicts**
-   - Check for processes using test ports: `lsof -i :3000-3010`
-   - Kill conflicting processes or adjust `E2E_PORT_RANGE`
+   - Test server uses port 8099 (not standard 25565)
+   - Check for processes using test ports: `lsof -i :8099` and `lsof -i :3000-3010`
+   - Kill conflicting processes or adjust ports
 
-3. **Timeout Errors**
-   - Increase timeouts: `E2E_TIMEOUT=60000 bun test:e2e`
+3. **Version Mismatch Errors**
+   - Use auto-detection: Set `version: false` in bot configuration
+   - Or specify exact version: `version: '1.21.8'`
+
+4. **Timeout Errors**
+   - Increase timeouts: `E2E_TIMEOUT=60000 bun test test/e2e/*.test.js`
    - Check network latency to test server
    - Verify server performance
 
-4. **Resource Exhaustion**
+5. **Resource Exhaustion**
    - Monitor memory: `watch -n 1 free -h`
    - Check CPU: `top`
    - Reduce parallel execution: `E2E_PARALLEL=false`

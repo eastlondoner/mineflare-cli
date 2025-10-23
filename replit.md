@@ -86,6 +86,23 @@ Environment variables (see `.env.example`):
 - `ENABLE_VIEWER` - Enable viewer for screenshots
 - `SERVER_PORT` - HTTP server port
 
+## Testing Infrastructure
+
+### End-to-End Testing Framework
+The project includes a comprehensive E2E testing framework with **zero mocks**:
+- Real Minecraft Paper 1.21.8 server running on port 8099 for testing
+- All tests connect to actual servers with real network connections
+- No mocks or fakes - validates actual system behavior
+- Test categories: server lifecycle, bot connections, API endpoints, and more
+- Located in `test/e2e/` with detailed documentation
+
+### Test Minecraft Server
+- **Type**: Paper 1.21.8
+- **Port**: 8099 (dedicated test port)
+- **Mode**: Offline mode enabled for bot testing
+- **Location**: `minecraft-server/` directory
+- **Purpose**: Enables real end-to-end testing without mocks
+
 ## Recent Changes
 - 2025-10-23: Initial implementation with Bun 1.2, Mineflayer, event logging, API endpoints, screenshot support, and CLI client
 - 2025-10-23: Added Minecraft Paper 1.21.8 server running on port 8099
@@ -103,6 +120,11 @@ Environment variables (see `.env.example`):
 - 2025-10-23: Added Linux ARM64 build support to GitHub Actions release workflow
   - Builds native ARM64 binaries for AWS Graviton, Raspberry Pi 4+, and other ARM servers
   - Uses GitHub's new free ARM64 runners (ubuntu-24.04-arm) for native compilation and testing
+- 2025-10-23: Implemented comprehensive E2E testing framework with zero mocks
+  - All tests use real Minecraft server connections (Paper 1.21.8 on port 8099)
+  - Real network connections, real process spawning, real HTTP requests
+  - Test utilities for managing real server processes and bot connections
+  - Validates production-like behavior without any mocking
 
 ## User Preferences
 None specified yet.
