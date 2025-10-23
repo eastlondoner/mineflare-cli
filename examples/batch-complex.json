@@ -1,0 +1,96 @@
+[
+  {
+    "type": "chat",
+    "params": {
+      "message": "Starting complex automation sequence..."
+    }
+  },
+  {
+    "type": "look",
+    "params": {
+      "yaw": 0,
+      "pitch": -0.5
+    },
+    "delay": 500
+  },
+  {
+    "type": "move",
+    "params": {
+      "x": 1,
+      "sprint": false
+    }
+  },
+  {
+    "type": "wait",
+    "params": {
+      "duration": 1000
+    }
+  },
+  {
+    "type": "stop"
+  },
+  {
+    "type": "dig",
+    "params": {
+      "x": -12,
+      "y": 68,
+      "z": 17
+    }
+  },
+  {
+    "type": "wait",
+    "params": {
+      "duration": 500
+    }
+  },
+  {
+    "type": "dig",
+    "params": {
+      "x": -11,
+      "y": 68,
+      "z": 17
+    }
+  },
+  {
+    "type": "wait",
+    "params": {
+      "duration": 500
+    }
+  },
+  {
+    "type": "look",
+    "params": {
+      "yaw": 1.57,
+      "pitch": 0
+    }
+  },
+  {
+    "type": "chat",
+    "params": {
+      "message": "Cleared area, now exploring..."
+    }
+  },
+  {
+    "type": "move",
+    "params": {
+      "x": 0,
+      "z": 1,
+      "sprint": true
+    }
+  },
+  {
+    "type": "wait",
+    "params": {
+      "duration": 3000
+    }
+  },
+  {
+    "type": "stop"
+  },
+  {
+    "type": "chat",
+    "params": {
+      "message": "Complex automation complete! ✓"
+    }
+  }
+]

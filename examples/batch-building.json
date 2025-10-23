@@ -1,0 +1,57 @@
+[
+  {
+    "type": "chat",
+    "params": {
+      "message": "Building a small structure..."
+    }
+  },
+  {
+    "type": "chat",
+    "params": {
+      "message": "/give AIBot stone 64"
+    },
+    "delay": 1000
+  },
+  {
+    "type": "place",
+    "params": {
+      "x": -12,
+      "y": 68,
+      "z": 16,
+      "blockName": "stone"
+    }
+  },
+  {
+    "type": "place",
+    "params": {
+      "x": -11,
+      "y": 68,
+      "z": 16,
+      "blockName": "stone"
+    }
+  },
+  {
+    "type": "place",
+    "params": {
+      "x": -10,
+      "y": 68,
+      "z": 16,
+      "blockName": "stone"
+    }
+  },
+  {
+    "type": "place",
+    "params": {
+      "x": -10,
+      "y": 69,
+      "z": 16,
+      "blockName": "stone"
+    }
+  },
+  {
+    "type": "chat",
+    "params": {
+      "message": "Structure built!"
+    }
+  }
+]

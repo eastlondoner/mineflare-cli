@@ -1,0 +1,96 @@
+node_modules/
+.env
+.env.*
+!.env.example
+*.log
+*.log.*
+.DS_Store
+dist/
+build/
+coverage/
+.vscode/
+.idea/
+
+# Build artifacts
+/mineflayer
+/mineflayer-*
+*.exe
+*.tar.gz
+*.zip
+*.sha256
+*.dmg
+*.app
+*.deb
+*.rpm
+
+# PID files
+*.pid
+
+# Minecraft server - ignore everything except documentation and start script
+minecraft-server/*
+!minecraft-server/start.sh
+!minecraft-server/README.md
+# JAR files should be downloaded separately, not stored in repo
+minecraft-server/*.jar
+minecraft-server/world/stats
+
+# Temporary files
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+.cache/
+tmp/
+
+# OS files
+Thumbs.db
+desktop.ini
+.DS_Store
+.Spotlight-V100
+.Trashes
+._*
+
+# Secrets and credentials
+*.key
+*.pem
+*.cert
+*.crt
+*.p12
+*.pfx
+secrets/
+credentials/
+
+# Attached assets (documentation attachments)
+attached_assets/
+
+# Bun specific
+bun.lockb
+
+# Test artifacts
+test-results/
+playwright-report/
+playwright/
+
+# Debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/tasks.json
+!.vscode/settings.json
+.idea
+*.sublime-project
+*.sublime-workspace
+
+# Replit specific files that may contain sensitive data
+.config/
+.cache/
+.local/
+.upm/

@@ -1,0 +1,215 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'  # Triggers on tags like v1.0.0, v2.1.3
+
+permissions:
+  contents: write  # Required for creating releases
+
+jobs:
+  build:
+    name: Build ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    
+    strategy:
+      matrix:
+        include:
+          - name: linux-x64
+            os: ubuntu-latest
+            target: bun-linux-x64
+            output: mineflayer-linux-x64
+            
+          - name: linux-x64-baseline
+            os: ubuntu-latest
+            target: bun-linux-x64-baseline
+            output: mineflayer-linux-x64-baseline
+            
+          - name: windows-x64
+            os: windows-latest
+            target: bun-windows-x64
+            output: mineflayer-windows-x64.exe
+            
+          - name: windows-x64-baseline
+            os: windows-latest
+            target: bun-windows-x64-baseline
+            output: mineflayer-windows-x64-baseline.exe
+            
+          - name: macos-arm64
+            os: macos-latest
+            target: bun-darwin-arm64
+            output: mineflayer-macos-arm64
+            
+          - name: macos-x64
+            os: macos-latest
+            target: bun-darwin-x64
+            output: mineflayer-macos-x64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.2'
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build executable
+        run: |
+          bun build \
+            --compile \
+            --minify \
+            --sourcemap \
+            --target=${{ matrix.target }} \
+            ./src/mineflayer.js \
+            --outfile ${{ matrix.output }}
+
+      - name: Test executable (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          ./${{ matrix.output }} --version
+          ./${{ matrix.output }} --help
+
+      - name: Test executable (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          .\\${{ matrix.output }} --version
+          .\\${{ matrix.output }} --help
+
+      - name: Compress executable (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          tar czf ${{ matrix.output }}.tar.gz ${{ matrix.output }}
+          sha256sum ${{ matrix.output }}.tar.gz > ${{ matrix.output }}.tar.gz.sha256
+
+      - name: Compress executable (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          Compress-Archive -Path ${{ matrix.output }} -DestinationPath ${{ matrix.output }}.zip
+          Get-FileHash -Algorithm SHA256 ${{ matrix.output }}.zip | ForEach-Object { $_.Hash + "  " + (Split-Path -Leaf $_.Path) } | Out-File -FilePath ${{ matrix.output }}.zip.sha256
+
+      - name: Upload artifacts (Unix)
+        if: runner.os != 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: |
+            ${{ matrix.output }}.tar.gz
+            ${{ matrix.output }}.tar.gz.sha256
+
+      - name: Upload artifacts (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: |
+            ${{ matrix.output }}.zip
+            ${{ matrix.output }}.zip.sha256
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare release files
+        run: |
+          mkdir release
+          find artifacts -type f \( -name "*.tar.gz" -o -name "*.zip" -o -name "*.sha256" \) -exec mv {} release/ \;
+          ls -la release/
+
+      - name: Extract version from tag
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Generate release notes
+        id: changelog
+        run: |
+          cat << EOF > release-notes.md
+          # Minecraft Bot Controller ${{ steps.get_version.outputs.VERSION }}
+          
+          ## 🚀 Single Executable Release
+          
+          This release provides standalone executables for controlling a Minecraft bot via HTTP API.
+          
+          ### 📦 Download Instructions
+          
+          Choose the appropriate file for your platform:
+          
+          #### Linux
+          - **Modern CPUs (2013+)**: \`mineflayer-linux-x64.tar.gz\`
+          - **Older CPUs**: \`mineflayer-linux-x64-baseline.tar.gz\`
+          
+          #### Windows
+          - **Modern CPUs (2013+)**: \`mineflayer-windows-x64.zip\`
+          - **Older CPUs**: \`mineflayer-windows-x64-baseline.zip\`
+          
+          #### macOS
+          - **Apple Silicon (M1/M2/M3)**: \`mineflayer-macos-arm64.tar.gz\`
+          - **Intel Macs**: \`mineflayer-macos-x64.tar.gz\`
+          
+          ### 🔧 Quick Start
+          
+          \`\`\`bash
+          # Extract the archive
+          tar xzf mineflayer-*.tar.gz  # Linux/macOS
+          # or
+          unzip mineflayer-*.zip        # Windows
+          
+          # Start server as daemon
+          ./mineflayer server start --daemon
+          
+          # Control the bot
+          ./mineflayer chat "Hello world!"
+          
+          # Stop server
+          ./mineflayer server stop
+          \`\`\`
+          
+          ### ✨ Features
+          
+          - AI-controlled Minecraft bot with HTTP API
+          - Single executable with server and CLI combined
+          - Event logging with timestamps
+          - Screenshot capability
+          - Block manipulation (dig, place)
+          - Crafting and equipment management
+          - Batch job automation system
+          - Daemon mode with PID tracking
+          
+          ### 📝 Checksums
+          
+          SHA256 checksums are provided for each file to verify integrity.
+          
+          ### 📚 Documentation
+          
+          See the [README](https://github.com/${{ github.repository }}) for full documentation.
+          
+          ---
+          
+          **Full Changelog**: https://github.com/${{ github.repository }}/compare/${{ github.event.before }}...${{ steps.get_version.outputs.VERSION }}
+          EOF
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/*
+          body_path: release-notes.md
+          name: Minecraft Bot Controller ${{ steps.get_version.outputs.VERSION }}
+          draft: false
+          prerelease: ${{ contains(github.ref, '-rc') || contains(github.ref, '-beta') || contains(github.ref, '-alpha') }}
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

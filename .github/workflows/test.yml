@@ -1,0 +1,42 @@
+name: Test
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.2'
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build executable
+        run: bun run build
+
+      - name: Test executable
+        run: |
+          ./mineflayer --version
+          ./mineflayer --help
+          ./mineflayer server --help
+
+      - name: Check file size
+        run: |
+          ls -lh mineflayer
+          size=$(stat -c%s mineflayer)
+          echo "Executable size: $((size/1024/1024)) MB"
+          if [ $size -gt 536870912 ]; then
+            echo "Warning: Executable larger than 512MB"
+            exit 1
+          fi

@@ -1,0 +1,38 @@
+[
+  {
+    "type": "chat",
+    "params": {
+      "message": "Starting batch job..."
+    }
+  },
+  {
+    "type": "look",
+    "params": {
+      "yaw": 0,
+      "pitch": 0
+    }
+  },
+  {
+    "type": "move",
+    "params": {
+      "x": 1,
+      "z": 0,
+      "sprint": true
+    }
+  },
+  {
+    "type": "wait",
+    "params": {
+      "duration": 2000
+    }
+  },
+  {
+    "type": "stop"
+  },
+  {
+    "type": "chat",
+    "params": {
+      "message": "Batch job complete!"
+    }
+  }
+]

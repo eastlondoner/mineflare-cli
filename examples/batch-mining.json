@@ -1,0 +1,50 @@
+[
+  {
+    "type": "chat",
+    "params": {
+      "message": "Starting mining operation..."
+    }
+  },
+  {
+    "type": "dig",
+    "params": {
+      "x": -13,
+      "y": 68,
+      "z": 16
+    }
+  },
+  {
+    "type": "wait",
+    "params": {
+      "duration": 500
+    }
+  },
+  {
+    "type": "dig",
+    "params": {
+      "x": -13,
+      "y": 67,
+      "z": 16
+    }
+  },
+  {
+    "type": "wait",
+    "params": {
+      "duration": 500
+    }
+  },
+  {
+    "type": "dig",
+    "params": {
+      "x": -13,
+      "y": 66,
+      "z": 16
+    }
+  },
+  {
+    "type": "chat",
+    "params": {
+      "message": "Mining complete! Dug 3 blocks."
+    }
+  }
+]
