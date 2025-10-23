@@ -93,6 +93,13 @@ Environment variables (see `.env.example`):
 - 2025-10-23: Added batch job system for executing sequences of instructions
 - 2025-10-23: Created single `mineflayer` executable combining server daemon and CLI functionality
 - 2025-10-23: Linux and macOS support only - Windows explicitly not supported
+- 2025-10-23: Added comprehensive configuration management system with:
+  - Multiple configuration profiles (default, development, production, custom)
+  - CLI-based configuration management (get, set, profile switching)
+  - Configuration validation with type checking and range validation
+  - Environment variable override support for backward compatibility
+  - Import/export functionality for configuration sharing
+  - Persistent configuration storage in .mineflayer/config.json
 
 ## User Preferences
 None specified yet.

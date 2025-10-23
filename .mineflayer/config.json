@@ -1,5 +1,5 @@
 {
-  "activeProfile": "test-profile",
+  "activeProfile": "default",
   "profiles": {
     "default": {
       "server": {
@@ -87,37 +87,6 @@
       "logging": {
         "level": "warn",
         "file": true,
-        "filePath": "./logs/bot.log"
-      },
-      "performance": {
-        "maxEventsHistory": 10000,
-        "screenshotQuality": 85
-      }
-    },
-    "test-profile": {
-      "server": {
-        "port": 3000,
-        "timeout": 30000
-      },
-      "minecraft": {
-        "host": "localhost",
-        "port": 25565,
-        "username": "ConfigBot",
-        "version": "1.21.8",
-        "auth": "offline",
-        "viewDistance": "normal"
-      },
-      "viewer": {
-        "enabled": true,
-        "port": 3007,
-        "firstPerson": false
-      },
-      "api": {
-        "baseUrl": "http://localhost:3000"
-      },
-      "logging": {
-        "level": "info",
-        "file": false,
         "filePath": "./logs/bot.log"
       },
       "performance": {
