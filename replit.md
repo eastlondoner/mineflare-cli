@@ -131,6 +131,16 @@ The project includes a comprehensive E2E testing framework with **zero mocks**:
   - Covers information, action, server management, and config commands
   - Simple connection tests consistently passing (3/3)
   - Simple CLI tests showing real command execution (12/20 passing)
+- 2025-10-23: Fixed libjpeg library compatibility issues for ARM64 systems
+  - Refactored bot-server.js to use dynamic imports for canvas and prismarine-viewer
+  - Canvas and viewer modules now load on-demand instead of at startup
+  - Added graceful error handling for missing native libraries
+  - Bot server continues functioning without viewer when libraries unavailable
+- 2025-10-23: Updated GitHub Actions workflows to install system dependencies
+  - Added system library installation step before building (libcairo, libpango, libjpeg-turbo, etc.)
+  - Ensures native modules are built with up-to-date system libraries
+  - Added clean install with --force flag to rebuild native bindings
+  - Added library version output for debugging build environments
 
 ## User Preferences
 None specified yet.
