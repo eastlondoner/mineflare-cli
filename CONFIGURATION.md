@@ -1,6 +1,6 @@
 # Configuration System Documentation
 
-The Mineflayer bot now includes a comprehensive configuration management system that supports multiple profiles, environment variable overrides, and CLI-based management.
+The mineflare bot now includes a comprehensive configuration management system that supports multiple profiles, environment variable overrides, and CLI-based management.
 
 ## Configuration Structure
 
@@ -37,7 +37,7 @@ The configuration is organized into sections:
 
 ## Configuration Files
 
-Configuration is stored in `.mineflayer/config.json` in your project directory. This file contains all profiles and settings.
+Configuration is stored in `.mineflare/config.json` in your project directory. This file contains all profiles and settings.
 
 ## Using the CLI
 
@@ -45,74 +45,74 @@ Configuration is stored in `.mineflayer/config.json` in your project directory. 
 
 ```bash
 # View current configuration
-mineflayer config get
+mineflare config get
 
 # View specific value
-mineflayer config get minecraft.host
+mineflare config get minecraft.host
 
 # View configuration as JSON
-mineflayer config get --json
+mineflare config get --json
 
 # View specific profile
-mineflayer config get -p production
+mineflare config get -p production
 ```
 
 ### Set Configuration Values
 
 ```bash
 # Set a single value
-mineflayer config set minecraft.host "mc.example.com"
+mineflare config set minecraft.host "mc.example.com"
 
 # Set port
-mineflayer config set server.port 8080
+mineflare config set server.port 8080
 
 # Set boolean value
-mineflayer config set viewer.enabled false
+mineflare config set viewer.enabled false
 
 # Set for specific profile
-mineflayer config set minecraft.username "ProductionBot" -p production
+mineflare config set minecraft.username "ProductionBot" -p production
 ```
 
 ### Profile Management
 
 ```bash
 # List all profiles
-mineflayer config profile list
+mineflare config profile list
 
 # Switch active profile
-mineflayer config profile switch production
+mineflare config profile switch production
 
 # Create new profile based on existing
-mineflayer config profile create staging -b development
+mineflare config profile create staging -b development
 
 # Delete profile
-mineflayer config profile delete old-profile
+mineflare config profile delete old-profile
 ```
 
 ### Import/Export Configuration
 
 ```bash
 # Export current configuration
-mineflayer config export my-config.json
+mineflare config export my-config.json
 
 # Export specific profile
-mineflayer config export production.json -p production
+mineflare config export production.json -p production
 
 # Import configuration
-mineflayer config import my-config.json
+mineflare config import my-config.json
 
 # Import to specific profile
-mineflayer config import staging-config.json -p staging
+mineflare config import staging-config.json -p staging
 ```
 
 ### Reset Configuration
 
 ```bash
 # Reset current profile to defaults
-mineflayer config reset
+mineflare config reset
 
 # Reset specific profile
-mineflayer config reset -p development
+mineflare config reset -p development
 ```
 
 ## Environment Variable Overrides
@@ -138,10 +138,10 @@ Profiles allow you to maintain different configurations for different environmen
 
 ```bash
 # Start with production profile
-mineflayer server start --profile production
+mineflare server start --profile production
 
 # Start with development profile
-mineflayer server start --profile development
+mineflare server start --profile development
 ```
 
 ### Default Profiles
@@ -166,35 +166,35 @@ Settings are applied in this order (highest priority first):
 
 ```bash
 # Create a new profile for your server
-mineflayer config profile create myserver
+mineflare config profile create myserver
 
 # Configure the server details
-mineflayer config set minecraft.host "play.myserver.com" -p myserver
-mineflayer config set minecraft.port 25565 -p myserver
-mineflayer config set minecraft.username "MyBot" -p myserver
+mineflare config set minecraft.host "play.myserver.com" -p myserver
+mineflare config set minecraft.port 25565 -p myserver
+mineflare config set minecraft.username "MyBot" -p myserver
 
 # Switch to the profile
-mineflayer config profile switch myserver
+mineflare config profile switch myserver
 
 # Start the bot
-mineflayer server start
+mineflare server start
 ```
 
 ### Quick configuration for testing
 
 ```bash
 # Set values for current session using environment variables
-MC_HOST=testserver.local MC_PORT=25566 mineflayer server start
+MC_HOST=testserver.local MC_PORT=25566 mineflare server start
 ```
 
 ### Backing up configuration
 
 ```bash
 # Export all profiles
-mineflayer config export backup-config.json
+mineflare config export backup-config.json
 
 # Later restore if needed
-mineflayer config import backup-config.json
+mineflare config import backup-config.json
 ```
 
 ## Validation
@@ -210,10 +210,10 @@ The configuration system validates values when they are set:
 
 ### Configuration not loading
 
-Check that the `.mineflayer/config.json` file exists and is valid JSON:
+Check that the `.mineflare/config.json` file exists and is valid JSON:
 
 ```bash
-cat .mineflayer/config.json | python -m json.tool
+cat .mineflare/config.json | python -m json.tool
 ```
 
 ### Environment variables not working
@@ -222,7 +222,7 @@ Ensure variables are exported before running the command:
 
 ```bash
 export MC_HOST=myserver.com
-mineflayer server start
+mineflare server start
 ```
 
 ### Reset to defaults
@@ -231,8 +231,8 @@ If configuration is corrupted:
 
 ```bash
 # Reset current profile
-mineflayer config reset
+mineflare config reset
 
 # Or delete config file and it will be recreated
-rm -rf .mineflayer/config.json
+rm -rf .mineflare/config.json
 ```

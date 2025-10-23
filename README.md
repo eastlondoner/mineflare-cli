@@ -1,6 +1,6 @@
 # Minecraft Bot Controller
 
-AI-controlled Minecraft bot with HTTP API and CLI interface. Available as a single `mineflayer` executable that combines both server and client functionality.
+AI-controlled Minecraft bot with HTTP API and CLI interface. Available as a single `mineflare` executable that combines both server and client functionality.
 
 **Platform Support:** Linux and macOS only. Windows is not supported.
 
@@ -24,18 +24,18 @@ Download the latest release from [GitHub Releases](https://github.com/eastlondon
 bun run build
 
 # Start server as daemon
-./mineflayer server start --daemon
+./mineflare server start --daemon
 
 # Control the bot
-./mineflayer chat "Hello world!"
-./mineflayer move -x 1 --sprint
-./mineflayer batch -f examples/batch-simple.json
+./mineflare chat "Hello world!"
+./mineflare move -x 1 --sprint
+./mineflare batch -f examples/batch-simple.json
 
 # Stop server
-./mineflayer server stop
+./mineflare server stop
 ```
 
-See [MINEFLAYER_EXECUTABLE.md](MINEFLAYER_EXECUTABLE.md) for full executable documentation.
+See [mineflare_EXECUTABLE.md](mineflare_EXECUTABLE.md) for full executable documentation.
 
 ## Setup (Development)
 
@@ -48,7 +48,7 @@ See [MINEFLAYER_EXECUTABLE.md](MINEFLAYER_EXECUTABLE.md) for full executable doc
 2. Start the bot server:
    ```bash
    bun start
-   # Or use the executable: ./mineflayer server start
+   # Or use the executable: ./mineflare server start
    ```
 
 3. Use the CLI to interact with the bot:
@@ -142,24 +142,24 @@ curl -X POST http://localhost:3000/batch \
 
 ## Configuration
 
-The bot supports a comprehensive configuration management system with multiple profiles, validation, and CLI management. Configuration is stored in `.mineflayer/config.json`.
+The bot supports a comprehensive configuration management system with multiple profiles, validation, and CLI management. Configuration is stored in `.mineflare/config.json`.
 
 ### Quick Configuration Examples
 
 ```bash
 # View current configuration
-./mineflayer config get
+./mineflare config get
 
 # Set a configuration value
-./mineflayer config set minecraft.host "mc.example.com"
-./mineflayer config set server.port 8080
+./mineflare config set minecraft.host "mc.example.com"
+./mineflare config set server.port 8080
 
 # Create and switch to a new profile
-./mineflayer config profile create production
-./mineflayer config profile switch production
+./mineflare config profile create production
+./mineflare config profile switch production
 
 # Start server with specific profile
-./mineflayer server start --profile production
+./mineflare server start --profile production
 ```
 
 ### Configuration Profiles
@@ -173,24 +173,24 @@ The system includes three default profiles:
 
 ```bash
 # View configuration
-./mineflayer config get                    # View all settings
-./mineflayer config get minecraft.host     # View specific value
-./mineflayer config get --json            # Output as JSON
+./mineflare config get                    # View all settings
+./mineflare config get minecraft.host     # View specific value
+./mineflare config get --json            # Output as JSON
 
 # Set values
-./mineflayer config set minecraft.host "play.example.com"
-./mineflayer config set minecraft.port 25565
-./mineflayer config set viewer.enabled false
+./mineflare config set minecraft.host "play.example.com"
+./mineflare config set minecraft.port 25565
+./mineflare config set viewer.enabled false
 
 # Profile management
-./mineflayer config profile list           # List profiles
-./mineflayer config profile create staging # Create new profile
-./mineflayer config profile switch staging # Switch profile
-./mineflayer config profile delete old     # Delete profile
+./mineflare config profile list           # List profiles
+./mineflare config profile create staging # Create new profile
+./mineflare config profile switch staging # Switch profile
+./mineflare config profile delete old     # Delete profile
 
 # Import/Export
-./mineflayer config export my-config.json  # Export configuration
-./mineflayer config import my-config.json  # Import configuration
+./mineflare config export my-config.json  # Export configuration
+./mineflare config import my-config.json  # Import configuration
 ```
 
 ### Configuration Structure
@@ -221,7 +221,7 @@ See [CONFIGURATION.md](CONFIGURATION.md) for complete configuration documentatio
 The system consists of two main components:
 
 1. **Bot Server** - Long-running process that:
-   - Connects to Minecraft server using Mineflayer
+   - Connects to Minecraft server using mineflare
    - Logs all events with timestamps
    - Exposes HTTP API for control
    - Provides screenshot capability via prismarine-viewer

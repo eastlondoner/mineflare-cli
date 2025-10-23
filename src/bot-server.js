@@ -1,6 +1,6 @@
 const mineflayer = require('mineflayer');
 const express = require('express');
-const { mineflayer: mineflayerViewer } = require('prismarine-viewer');
+const { mineflare: mineflareViewer } = require('prismarine-viewer');
 const { createCanvas } = require('canvas');
 
 class MinecraftBotServer {
@@ -39,7 +39,7 @@ class MinecraftBotServer {
       if (config.enableViewer !== false) {
         const viewerPort = config.viewerPort || 3001;
         const firstPerson = config.firstPerson !== undefined ? config.firstPerson : true;
-        this.viewer = mineflayerViewer(this.bot, { port: viewerPort, firstPerson });
+        this.viewer = mineflareViewer(this.bot, { port: viewerPort, firstPerson });
         console.log(`Viewer started on port ${viewerPort}`);
       }
     });

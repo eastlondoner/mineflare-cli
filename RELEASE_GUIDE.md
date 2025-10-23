@@ -69,16 +69,16 @@ bun run build:mac
 # Or build for specific platform
 bun build --compile --minify --sourcemap \
   --target=bun-linux-x64 \
-  ./src/mineflayer.js \
-  --outfile mineflayer-linux-x64
+  ./src/mineflare.js \
+  --outfile mineflare-linux-x64
 ```
 
 ### 2. Create Archives
 
 ```bash
 # Linux/macOS
-tar czf mineflayer-linux-x64.tar.gz mineflayer-linux-x64
-sha256sum mineflayer-linux-x64.tar.gz > mineflayer-linux-x64.tar.gz.sha256
+tar czf mineflare-linux-x64.tar.gz mineflare-linux-x64
+sha256sum mineflare-linux-x64.tar.gz > mineflare-linux-x64.tar.gz.sha256
 ```
 
 ### 3. Create GitHub Release
@@ -141,10 +141,10 @@ Before creating a release:
 1. **Test the build locally**:
    ```bash
    bun run build
-   ./mineflayer --version
-   ./mineflayer server start --daemon
-   ./mineflayer server status
-   ./mineflayer server stop
+   ./mineflare --version
+   ./mineflare server start --daemon
+   ./mineflare server status
+   ./mineflare server stop
    ```
 
 2. **Run the test workflow**:
@@ -186,7 +186,7 @@ Triggers on pushes and PRs to:
 
 After release, executables will be available at:
 ```
-https://github.com/[your-username]/[your-repo]/releases/download/v1.0.0/mineflayer-linux-x64.tar.gz
+https://github.com/[your-username]/[your-repo]/releases/download/v1.0.0/mineflare-linux-x64.tar.gz
 ```
 
 ## Release Notes Template

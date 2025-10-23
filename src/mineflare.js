@@ -41,7 +41,7 @@ function displayConfigTable(config, schema) {
 }
 
 program
-  .name('mineflayer')
+  .name('mineflare')
   .description('Minecraft bot controller with HTTP API')
   .version('1.0.0');
 
@@ -90,7 +90,7 @@ serverCmd
       
       child.unref();
       
-      const pidFile = path.join(process.cwd(), 'mineflayer.pid');
+      const pidFile = path.join(process.cwd(), 'mineflare.pid');
       fs.writeFileSync(pidFile, child.pid.toString());
       
       console.log(`Bot server started as daemon (PID: ${child.pid})`);
@@ -113,7 +113,7 @@ serverCmd
   .command('stop')
   .description('Stop the bot server daemon')
   .action(() => {
-    const pidFile = path.join(process.cwd(), 'mineflayer.pid');
+    const pidFile = path.join(process.cwd(), 'mineflare.pid');
     
     if (!fs.existsSync(pidFile)) {
       console.error('No daemon running (PID file not found)');
@@ -135,7 +135,7 @@ serverCmd
   .command('status')
   .description('Check server status')
   .action(async () => {
-    const pidFile = path.join(process.cwd(), 'mineflayer.pid');
+    const pidFile = path.join(process.cwd(), 'mineflare.pid');
     
     if (fs.existsSync(pidFile)) {
       const pid = parseInt(fs.readFileSync(pidFile, 'utf8'));

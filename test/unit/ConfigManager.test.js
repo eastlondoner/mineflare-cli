@@ -40,7 +40,7 @@ describe('ConfigManager', () => {
 
   describe('Initialization', () => {
     it('should create config directory if it does not exist', () => {
-      const configPath = path.join(testDir, '.mineflayer');
+      const configPath = path.join(testDir, '.mineflare');
       expect(fs.existsSync(configPath)).toBe(true);
     });
 
@@ -56,7 +56,7 @@ describe('ConfigManager', () => {
     });
 
     it('should save configurations to file', () => {
-      const configFile = path.join(testDir, '.mineflayer', 'config.json');
+      const configFile = path.join(testDir, '.mineflare', 'config.json');
       expect(fs.existsSync(configFile)).toBe(true);
       
       const content = JSON.parse(fs.readFileSync(configFile, 'utf8'));
@@ -150,7 +150,7 @@ describe('ConfigManager', () => {
     it('should save changes to file', () => {
       configManager.set('server.port', 3002);
       
-      const configFile = path.join(testDir, '.mineflayer', 'config.json');
+      const configFile = path.join(testDir, '.mineflare', 'config.json');
       const content = JSON.parse(fs.readFileSync(configFile, 'utf8'));
       expect(content.profiles.default.server.port).toBe(3002);
     });
@@ -362,7 +362,7 @@ describe('ConfigManager', () => {
   describe('Config File Loading', () => {
     it('should load existing config file', () => {
       // Create a custom config file
-      const configPath = path.join(testDir, '.mineflayer');
+      const configPath = path.join(testDir, '.mineflare');
       const configFile = path.join(configPath, 'config.json');
       
       const customConfig = {
@@ -398,7 +398,7 @@ describe('ConfigManager', () => {
     });
 
     it('should handle corrupted config file gracefully', () => {
-      const configPath = path.join(testDir, '.mineflayer');
+      const configPath = path.join(testDir, '.mineflare');
       const configFile = path.join(configPath, 'config.json');
       
       // Write invalid JSON

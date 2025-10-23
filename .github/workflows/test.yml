@@ -27,14 +27,14 @@ jobs:
 
       - name: Test executable
         run: |
-          ./mineflayer --version
-          ./mineflayer --help
-          ./mineflayer server --help
+          ./mineflare --version
+          ./mineflare --help
+          ./mineflare server --help
 
       - name: Check file size
         run: |
-          ls -lh mineflayer
-          size=$(stat -c%s mineflayer)
+          ls -lh mineflare
+          size=$(stat -c%s mineflare)
           echo "Executable size: $((size/1024/1024)) MB"
           if [ $size -gt 536870912 ]; then
             echo "Warning: Executable larger than 512MB"

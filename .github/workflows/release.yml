@@ -20,22 +20,22 @@ jobs:
           - name: linux-x64
             os: ubuntu-latest
             target: bun-linux-x64
-            output: mineflayer-linux-x64
+            output: mineflare-linux-x64
             
           - name: linux-x64-baseline
             os: ubuntu-latest
             target: bun-linux-x64-baseline
-            output: mineflayer-linux-x64-baseline
+            output: mineflare-linux-x64-baseline
             
           - name: macos-arm64
             os: macos-latest
             target: bun-darwin-arm64
-            output: mineflayer-macos-arm64
+            output: mineflare-macos-arm64
             
           - name: macos-x64
             os: macos-latest
             target: bun-darwin-x64
-            output: mineflayer-macos-x64
+            output: mineflare-macos-x64
 
     steps:
       - name: Checkout
@@ -56,7 +56,7 @@ jobs:
             --minify \
             --sourcemap \
             --target=${{ matrix.target }} \
-            ./src/mineflayer.js \
+            ./src/mineflare.js \
             --outfile ${{ matrix.output }}
 
       - name: Test executable (Unix)
@@ -141,33 +141,33 @@ jobs:
           Choose the appropriate file for your platform:
           
           #### Linux
-          - **Modern CPUs (2013+)**: \`mineflayer-linux-x64.tar.gz\`
-          - **Older CPUs**: \`mineflayer-linux-x64-baseline.tar.gz\`
+          - **Modern CPUs (2013+)**: \`mineflare-linux-x64.tar.gz\`
+          - **Older CPUs**: \`mineflare-linux-x64-baseline.tar.gz\`
           
           #### Windows
-          - **Modern CPUs (2013+)**: \`mineflayer-windows-x64.zip\`
-          - **Older CPUs**: \`mineflayer-windows-x64-baseline.zip\`
+          - **Modern CPUs (2013+)**: \`mineflare-windows-x64.zip\`
+          - **Older CPUs**: \`mineflare-windows-x64-baseline.zip\`
           
           #### macOS
-          - **Apple Silicon (M1/M2/M3)**: \`mineflayer-macos-arm64.tar.gz\`
-          - **Intel Macs**: \`mineflayer-macos-x64.tar.gz\`
+          - **Apple Silicon (M1/M2/M3)**: \`mineflare-macos-arm64.tar.gz\`
+          - **Intel Macs**: \`mineflare-macos-x64.tar.gz\`
           
           ### 🔧 Quick Start
           
           \`\`\`bash
           # Extract the archive
-          tar xzf mineflayer-*.tar.gz  # Linux/macOS
+          tar xzf mineflare-*.tar.gz  # Linux/macOS
           # or
-          unzip mineflayer-*.zip        # Windows
+          unzip mineflare-*.zip        # Windows
           
           # Start server as daemon
-          ./mineflayer server start --daemon
+          ./mineflare server start --daemon
           
           # Control the bot
-          ./mineflayer chat "Hello world!"
+          ./mineflare chat "Hello world!"
           
           # Stop server
-          ./mineflayer server stop
+          ./mineflare server stop
           \`\`\`
           
           ### ✨ Features

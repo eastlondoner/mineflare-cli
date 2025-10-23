@@ -12,8 +12,8 @@ coverage/
 .idea/
 
 # Build artifacts
-/mineflayer
-/mineflayer-*
+/mineflare
+/mineflare-*
 *.exe
 *.tar.gz
 *.zip

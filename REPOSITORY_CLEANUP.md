@@ -7,8 +7,8 @@ Based on the current repository scan, here are items that need attention:
 ### ❌ Files/Directories to Remove from Git
 
 1. **Build Artifacts** (Currently present):
-   - `/mineflayer` - The compiled executable (326MB!)
-   - Any `mineflayer-*` executables
+   - `/mineflare` - The compiled executable (326MB!)
+   - Any `mineflare-*` executables
    - `*.tar.gz`, `*.zip` archives
 
 2. **Minecraft Server Runtime Files**:
@@ -41,7 +41,7 @@ Run these commands to clean up your repository:
 
 ```bash
 # Remove build artifacts
-rm -f mineflayer mineflayer-* *.exe *.tar.gz *.zip *.sha256
+rm -f mineflare mineflare-* *.exe *.tar.gz *.zip *.sha256
 
 # Clean Minecraft server directory (keep only essentials)
 cd minecraft-server
@@ -65,7 +65,7 @@ git rm -r --cached minecraft-server/versions 2>/dev/null || true
 git rm -r --cached minecraft-server/*.json 2>/dev/null || true
 git rm -r --cached minecraft-server/*.yml 2>/dev/null || true
 git rm -r --cached minecraft-server/*.properties 2>/dev/null || true
-git rm --cached mineflayer 2>/dev/null || true
+git rm --cached mineflare 2>/dev/null || true
 git rm -r --cached attached_assets 2>/dev/null || true
 
 # Add the updated .gitignore

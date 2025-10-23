@@ -1,5 +1,5 @@
 /**
- * Mock implementation of mineflayer bot for testing
+ * Mock implementation of mineflare bot for testing
  */
 class MockBot {
   constructor() {
@@ -204,9 +204,9 @@ class MockBot {
 }
 
 /**
- * Mock mineflayer module
+ * Mock mineflare module
  */
-const mineflayerMock = {
+const mineflareMock = {
   createBot: (options) => {
     const bot = new MockBot();
     bot.username = options.username || 'test_bot';
@@ -222,4 +222,4 @@ const mineflayerMock = {
   MockBot
 };
 
-module.exports = mineflayerMock;
+module.exports = mineflareMock;

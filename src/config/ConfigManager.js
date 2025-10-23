@@ -5,7 +5,7 @@ class ConfigManager {
   constructor() {
     this.configs = new Map();
     this.activeProfile = 'default';
-    this.configPath = path.join(process.cwd(), '.mineflayer');
+    this.configPath = path.join(process.cwd(), '.mineflare');
     this.configFile = path.join(this.configPath, 'config.json');
     
     // Default configuration schema

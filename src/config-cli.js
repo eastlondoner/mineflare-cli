@@ -31,8 +31,8 @@ function displayConfigTable(config, schema) {
 }
 
 program
-  .name('mineflayer-config')
-  .description('Configuration management for Mineflayer bot')
+  .name('mineflare-config')
+  .description('Configuration management for mineflare bot')
   .version('1.0.0');
 
 // Get configuration
