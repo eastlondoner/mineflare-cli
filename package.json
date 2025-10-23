@@ -38,6 +38,7 @@
     "commander": "^14.0.1",
     "express": "^5.1.0",
     "mineflayer": "^4.33.0",
-    "prismarine-viewer": "^1.33.0"
+    "prismarine-viewer": "^1.33.0",
+    "supertest": "^7.1.4"
   }
 }
