@@ -153,30 +153,6 @@ if [ -f "package.json" ]; then
                     echo -e "${YELLOW}⚠ Failed to build default binary${NC}"
                 fi
                 
-                # Optionally build for all platforms
-                read -p "Build for all platforms? (y/n): " build_all
-                if [ "$build_all" = "y" ] || [ "$build_all" = "Y" ]; then
-                    echo -e "${BLUE}Building for all platforms...${NC}"
-                    
-                    if bun run build:linux 2>/dev/null; then
-                        echo -e "${GREEN}✓ Built Linux x64 binary${NC}"
-                    else
-                        echo -e "${YELLOW}⚠ Failed to build Linux x64 binary${NC}"
-                    fi
-                    
-                    if bun run build:linux-arm64 2>/dev/null; then
-                        echo -e "${GREEN}✓ Built Linux ARM64 binary${NC}"
-                    else
-                        echo -e "${YELLOW}⚠ Failed to build Linux ARM64 binary${NC}"
-                    fi
-                    
-                    if bun run build:mac 2>/dev/null; then
-                        echo -e "${GREEN}✓ Built macOS ARM64 binary${NC}"
-                    else
-                        echo -e "${YELLOW}⚠ Failed to build macOS ARM64 binary${NC}"
-                    fi
-                fi
-                
                 echo -e "${GREEN}Binary rebuild complete${NC}"
                 echo -e "${YELLOW}Note: These are local builds. GitHub Actions will build the release binaries.${NC}"
             else
