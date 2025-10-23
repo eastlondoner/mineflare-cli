@@ -103,3 +103,13 @@ Environment variables (see `.env.example`):
 
 ## User Preferences
 None specified yet.
+
+## Development Guidelines
+- **ALWAYS update the README.md** when adding or changing functionality
+  - Document new features in the appropriate section
+  - Update command examples if CLI changes
+  - Add new API endpoints to the API Examples section
+  - Update configuration documentation if settings change
+  - Keep the Quick Start section current with any changes
+- The README should be the single source of truth for users
+- If major changes are made, also update the CHANGELOG.md
