@@ -124,21 +124,21 @@ describe('ConfigManager', () => {
     it('should validate number type and range', () => {
       expect(() => {
         configManager.set('server.port', 'invalid');
-      }).toThrow('Invalid value for server.port: Must be a number');
+      }).toThrow('Configuration Error: Must be a number');
       
       expect(() => {
         configManager.set('server.port', 0);
-      }).toThrow('Invalid value for server.port: Must be >= 1');
+      }).toThrow('Configuration Error: Must be >= 1');
       
       expect(() => {
         configManager.set('server.port', 70000);
-      }).toThrow('Invalid value for server.port: Must be <= 65535');
+      }).toThrow('Configuration Error: Must be <= 65535');
     });
 
     it('should validate enum values', () => {
       expect(() => {
         configManager.set('minecraft.auth', 'invalid');
-      }).toThrow('Invalid value for minecraft.auth: Must be one of: offline, microsoft, mojang');
+      }).toThrow('Configuration Error: Must be one of: offline, microsoft, mojang');
       
       configManager.set('minecraft.auth', 'microsoft');
       expect(configManager.get('minecraft.auth')).toBe('microsoft');
@@ -283,7 +283,7 @@ describe('ConfigManager', () => {
       
       expect(() => {
         configManager.importConfig(invalidConfig);
-      }).toThrow('Invalid value for server.port: Must be a number');
+      }).toThrow('Import Configuration Error: Must be a number');
     });
 
     it('should import to specific profile', () => {

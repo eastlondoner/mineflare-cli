@@ -188,7 +188,15 @@ class ConfigManager {
             } else if (spec.type === 'boolean') {
               // Check if value is a string before calling toLowerCase()
               if (typeof value === 'string') {
-                value = value.toLowerCase() === 'true';
+                const lowerValue = value.toLowerCase();
+                // Support '1' and '0' as boolean values
+                if (lowerValue === 'true' || lowerValue === '1' || lowerValue === 'yes' || lowerValue === 'on') {
+                  value = true;
+                } else if (lowerValue === 'false' || lowerValue === '0' || lowerValue === 'no' || lowerValue === 'off') {
+                  value = false;
+                } else {
+                  value = Boolean(value);
+                }
               } else {
                 value = Boolean(value);
               }
