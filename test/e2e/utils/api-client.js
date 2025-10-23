@@ -125,6 +125,30 @@ class APIClient {
   }
 
   /**
+   * Get state (alias for getBotState)
+   */
+  async getState() {
+    const response = await this.get('/state');
+    return response.data;
+  }
+
+  /**
+   * Get health status
+   */
+  async getHealth() {
+    const response = await this.get('/health');
+    return response.data;
+  }
+
+  /**
+   * Send chat message (simplified)
+   */
+  async chat(message) {
+    const response = await this.post('/chat', { message });
+    return response.data;
+  }
+
+  /**
    * Send chat message
    */
   async sendChat(message) {
@@ -190,8 +214,15 @@ class APIClient {
   /**
    * Get events
    */
-  async getEvents(limit = 100) {
-    return this.get(`/events?limit=${limit}`);
+  async getEvents(since) {
+    // Support both 'since' timestamp and 'limit' parameters
+    if (typeof since === 'number') {
+      const response = await this.get(`/events?since=${since}`);
+      return response.data;
+    }
+    // Default to getting all events
+    const response = await this.get('/events');
+    return response.data;
   }
 
   /**

@@ -73,7 +73,16 @@ This E2E testing framework operates on the principle of **absolute realism**. Un
 - Batch operations
 - **Status**: Framework ready for implementation
 
-#### 6. CLI Commands Tests (`cli-commands.e2e.test.js`) 🔥 **NEW**
+#### 6. Bot Respawn Tests (`bot-respawn.e2e.test.js`) ✅ **IMPLEMENTED**
+- Tests automatic respawn after bot death
+- Validates recovery from digging plugin errors
+- Handles respawn without operator privileges
+- Tests reconnection logic when respawn fails
+- Verifies multiple death/respawn cycles
+- Manual reconnection API endpoint testing
+- **Status**: Comprehensive tests implemented for death loop prevention
+
+#### 7. CLI Commands Tests (`cli-commands.e2e.test.js`) 🔥 **NEW**
 - **Comprehensive test suite for ALL CLI commands**
 - Tests every single CLI command with real execution
 - Information commands: health, state, inventory, entities, events, recipes, screenshot
