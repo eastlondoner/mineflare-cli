@@ -140,7 +140,71 @@ curl -X POST http://localhost:3000/batch \
   }'
 ```
 
-## Environment Variables
+## Configuration
+
+The bot supports a comprehensive configuration management system with multiple profiles, validation, and CLI management. Configuration is stored in `.mineflayer/config.json`.
+
+### Quick Configuration Examples
+
+```bash
+# View current configuration
+./mineflayer config get
+
+# Set a configuration value
+./mineflayer config set minecraft.host "mc.example.com"
+./mineflayer config set server.port 8080
+
+# Create and switch to a new profile
+./mineflayer config profile create production
+./mineflayer config profile switch production
+
+# Start server with specific profile
+./mineflayer server start --profile production
+```
+
+### Configuration Profiles
+
+The system includes three default profiles:
+- **default** - Base configuration
+- **development** - Debug logging enabled
+- **production** - Warning-level logging with file output
+
+### Configuration Commands
+
+```bash
+# View configuration
+./mineflayer config get                    # View all settings
+./mineflayer config get minecraft.host     # View specific value
+./mineflayer config get --json            # Output as JSON
+
+# Set values
+./mineflayer config set minecraft.host "play.example.com"
+./mineflayer config set minecraft.port 25565
+./mineflayer config set viewer.enabled false
+
+# Profile management
+./mineflayer config profile list           # List profiles
+./mineflayer config profile create staging # Create new profile
+./mineflayer config profile switch staging # Switch profile
+./mineflayer config profile delete old     # Delete profile
+
+# Import/Export
+./mineflayer config export my-config.json  # Export configuration
+./mineflayer config import my-config.json  # Import configuration
+```
+
+### Configuration Structure
+
+- **server** - API server settings (port, timeout)
+- **minecraft** - Server connection (host, port, username, version, auth)
+- **viewer** - Web viewer settings (enabled, port, firstPerson)
+- **api** - API base URL for CLI
+- **logging** - Log level and file output
+- **performance** - Event history and screenshot quality
+
+### Environment Variables (Legacy)
+
+Environment variables still work and override configuration file settings:
 
 - `MC_HOST` - Minecraft server host (default: localhost)
 - `MC_PORT` - Minecraft server port (default: 25565)
@@ -149,6 +213,8 @@ curl -X POST http://localhost:3000/batch \
 - `MC_AUTH` - Authentication type: offline or microsoft
 - `ENABLE_VIEWER` - Enable viewer for screenshots (default: true)
 - `SERVER_PORT` - HTTP API server port (default: 3000)
+
+See [CONFIGURATION.md](CONFIGURATION.md) for complete configuration documentation.
 
 ## Architecture
 
