@@ -179,15 +179,22 @@ class ConfigManager {
         const spec = this.schema[section]?.[field];
         
         if (spec) {
-          if (spec.type === 'number') {
-            value = parseInt(value);
-          } else if (spec.type === 'boolean') {
-            // Check if value is a string before calling toLowerCase()
-            if (typeof value === 'string') {
-              value = value.toLowerCase() === 'true';
-            } else {
-              value = Boolean(value);
+          try {
+            if (spec.type === 'number') {
+              value = parseInt(value);
+              if (isNaN(value)) {
+                console.warn(`Warning: Invalid number value for ${configPath} from ${envVar}: "${process.env[envVar]}"`);
+              }
+            } else if (spec.type === 'boolean') {
+              // Check if value is a string before calling toLowerCase()
+              if (typeof value === 'string') {
+                value = value.toLowerCase() === 'true';
+              } else {
+                value = Boolean(value);
+              }
             }
+          } catch (error) {
+            console.warn(`Warning: Failed to parse ${envVar} for ${configPath}: ${error.message}`);
           }
         }
         
@@ -209,9 +216,9 @@ class ConfigManager {
       const spec = this.schema[section]?.[field];
       
       if (spec) {
-        const validation = this.validateValue(value, spec);
+        const validation = this.validateValue(value, spec, path);
         if (!validation.valid) {
-          throw new Error(`Invalid value for ${path}: ${validation.error}`);
+          throw new Error(`Configuration Error: ${validation.error}`);
         }
         value = validation.value;
       }
@@ -231,31 +238,59 @@ class ConfigManager {
     this.saveConfigurations();
   }
   
-  validateValue(value, spec) {
+  validateValue(value, spec, fieldName = null) {
     let parsedValue = value;
+    const field = fieldName ? ` for '${fieldName}'` : '';
     
     // Type conversion
     if (spec.type === 'number') {
       parsedValue = Number(value);
       if (isNaN(parsedValue)) {
-        return { valid: false, error: 'Must be a number' };
+        return { 
+          valid: false, 
+          error: `Must be a number${field}. Received: "${value}" (type: ${typeof value})` 
+        };
+      }
+      if (!isFinite(parsedValue)) {
+        return { 
+          valid: false, 
+          error: `Must be a finite number${field}. Received: ${parsedValue}` 
+        };
       }
       if (spec.min !== undefined && parsedValue < spec.min) {
-        return { valid: false, error: `Must be >= ${spec.min}` };
+        return { 
+          valid: false, 
+          error: `Must be >= ${spec.min}${field}. Received: ${parsedValue}` 
+        };
       }
       if (spec.max !== undefined && parsedValue > spec.max) {
-        return { valid: false, error: `Must be <= ${spec.max}` };
+        return { 
+          valid: false, 
+          error: `Must be <= ${spec.max}${field}. Received: ${parsedValue}` 
+        };
       }
     } else if (spec.type === 'boolean') {
       if (typeof value === 'string') {
-        parsedValue = value.toLowerCase() === 'true';
+        // Handle string boolean values with better parsing
+        const lowerValue = value.toLowerCase();
+        if (lowerValue === 'true' || lowerValue === '1' || lowerValue === 'yes' || lowerValue === 'on') {
+          parsedValue = true;
+        } else if (lowerValue === 'false' || lowerValue === '0' || lowerValue === 'no' || lowerValue === 'off') {
+          parsedValue = false;
+        } else {
+          // Still convert to boolean for other strings
+          parsedValue = Boolean(value);
+        }
       } else {
         parsedValue = Boolean(value);
       }
     } else if (spec.type === 'string') {
       parsedValue = String(value);
       if (spec.enum && !spec.enum.includes(parsedValue)) {
-        return { valid: false, error: `Must be one of: ${spec.enum.join(', ')}` };
+        return { 
+          valid: false, 
+          error: `Must be one of: ${spec.enum.join(', ')}${field}. Received: "${parsedValue}"` 
+        };
       }
     }
     
@@ -341,9 +376,9 @@ class ConfigManager {
       for (const [field, value] of Object.entries(fields)) {
         const spec = this.schema[section][field];
         if (spec) {
-          const validation = this.validateValue(value, spec);
+          const validation = this.validateValue(value, spec, `${section}.${field}`);
           if (!validation.valid) {
-            throw new Error(`Invalid value for ${section}.${field}: ${validation.error}`);
+            throw new Error(`Import Configuration Error: ${validation.error}`);
           }
           configData[section][field] = validation.value;
         }
