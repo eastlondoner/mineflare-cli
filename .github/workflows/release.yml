@@ -64,47 +64,23 @@ jobs:
             ./src/mineflare.js \
             --outfile ${{ matrix.output }}
 
-      - name: Test executable (Unix)
-        if: runner.os != 'Windows'
+      - name: Test executable
         run: |
           ./${{ matrix.output }} --version
           ./${{ matrix.output }} --help
 
-      - name: Test executable (Windows)
-        if: runner.os == 'Windows'
-        run: |
-          .\\${{ matrix.output }} --version
-          .\\${{ matrix.output }} --help
-
-      - name: Compress executable (Unix)
-        if: runner.os != 'Windows'
+      - name: Compress executable
         run: |
           tar czf ${{ matrix.output }}.tar.gz ${{ matrix.output }}
           sha256sum ${{ matrix.output }}.tar.gz > ${{ matrix.output }}.tar.gz.sha256
 
-      - name: Compress executable (Windows)
-        if: runner.os == 'Windows'
-        run: |
-          Compress-Archive -Path ${{ matrix.output }} -DestinationPath ${{ matrix.output }}.zip
-          Get-FileHash -Algorithm SHA256 ${{ matrix.output }}.zip | ForEach-Object { $_.Hash + "  " + (Split-Path -Leaf $_.Path) } | Out-File -FilePath ${{ matrix.output }}.zip.sha256
-
-      - name: Upload artifacts (Unix)
-        if: runner.os != 'Windows'
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.name }}
           path: |
             ${{ matrix.output }}.tar.gz
             ${{ matrix.output }}.tar.gz.sha256
-
-      - name: Upload artifacts (Windows)
-        if: runner.os == 'Windows'
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.name }}
-          path: |
-            ${{ matrix.output }}.zip
-            ${{ matrix.output }}.zip.sha256
 
   release:
     name: Create Release
@@ -124,7 +100,7 @@ jobs:
       - name: Prepare release files
         run: |
           mkdir release
-          find artifacts -type f \( -name "*.tar.gz" -o -name "*.zip" -o -name "*.sha256" \) -exec mv {} release/ \;
+          find artifacts -type f \( -name "*.tar.gz" -o -name "*.sha256" \) -exec mv {} release/ \;
           ls -la release/
 
       - name: Extract version from tag
@@ -150,10 +126,6 @@ jobs:
           - **Older CPUs**: \`mineflare-linux-x64-baseline.tar.gz\`
           - **ARM64/AArch64**: \`mineflare-linux-arm64.tar.gz\` (AWS Graviton, Raspberry Pi 4+, etc.)
           
-          #### Windows
-          - **Modern CPUs (2013+)**: \`mineflare-windows-x64.zip\`
-          - **Older CPUs**: \`mineflare-windows-x64-baseline.zip\`
-          
           #### macOS
           - **Apple Silicon (M1/M2/M3)**: \`mineflare-macos-arm64.tar.gz\`
           - **Intel Macs**: \`mineflare-macos-x64.tar.gz\`
@@ -162,9 +134,7 @@ jobs:
           
           \`\`\`bash
           # Extract the archive
-          tar xzf mineflare-*.tar.gz  # Linux/macOS
-          # or
-          unzip mineflare-*.zip        # Windows
+          tar xzf mineflare-*.tar.gz
           
           # Start server as daemon
           ./mineflare server start --daemon
