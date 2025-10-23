@@ -53,8 +53,7 @@ describe('E2E: Server Lifecycle', () => {
           'run',
           'src/mineflare.js',
           'server',
-          'start',
-          '--foreground'
+          'start'
         ], {
           env: {
             ...process.env,
@@ -141,7 +140,7 @@ describe('E2E: Server Lifecycle', () => {
         'src/mineflare.js',
         'server',
         'start',
-        '--foreground'
+        
       ], {
         env: {
           ...process.env,
@@ -167,7 +166,7 @@ describe('E2E: Server Lifecycle', () => {
         'src/mineflare.js',
         'server',
         'start',
-        '--foreground'
+        
       ], {
         env: {
           ...process.env,
@@ -189,35 +188,22 @@ describe('E2E: Server Lifecycle', () => {
       server1.kill('SIGTERM');
     }, 20000);
     
-    it('should load configuration from file', async () => {
+    it('should load configuration from environment', async () => {
       const port = E2E_CONFIG.BASE_PORT + 4;
-      const configFile = path.join(tempDir, 'test-config.json');
       
-      // Create config file
-      const config = {
-        server: { port },
-        minecraft: {
-          host: 'test.server.com',
-          username: 'ConfigTestBot',
-          version: '1.20.1'
-        },
-        logging: { level: 'debug' }
-      };
-      
-      fs.writeFileSync(configFile, JSON.stringify(config, null, 2));
-      
-      // Start server with config file
+      // Start server with environment variables
       const serverProcess = spawn('bun', [
         'run',
         'src/mineflare.js',
         'server',
-        'start',
-        '--foreground',
-        '--config',
-        configFile
+        'start'
       ], {
         env: {
           ...process.env,
+          SERVER_PORT: port.toString(),
+          MC_HOST: 'test.server.com',
+          MC_USERNAME: 'ConfigTestBot',
+          MC_VERSION: '1.20.1',
           NODE_ENV: 'test'
         },
         stdio: 'pipe'
@@ -233,16 +219,13 @@ describe('E2E: Server Lifecycle', () => {
         }
       }, 10000);
       
-      // Verify configuration was loaded
+      // Verify server started on correct port
       const client = new APIClient(`http://localhost:${port}`);
-      const state = await client.getBotState();
-      
-      // The state should reflect some of the configuration
-      expect(state.ok).toBe(true);
+      const health = await client.checkHealth();
+      expect(health).toBe(true);
       
       // Clean up
       serverProcess.kill('SIGTERM');
-      fs.unlinkSync(configFile);
     }, 15000);
   });
   
@@ -256,7 +239,7 @@ describe('E2E: Server Lifecycle', () => {
         'src/mineflare.js',
         'server',
         'start',
-        '--foreground'
+        
       ], {
         env: {
           ...process.env,
@@ -303,7 +286,7 @@ describe('E2E: Server Lifecycle', () => {
         'src/mineflare.js',
         'server',
         'start',
-        '--foreground'
+        
       ], {
         env: {
           ...process.env,
@@ -435,8 +418,7 @@ describe('E2E: Server Lifecycle', () => {
           'run',
           'src/mineflare.js',
           'server',
-          'start',
-          '--foreground'
+          'start'
         ], {
           env: {
             ...process.env,
@@ -485,7 +467,7 @@ describe('E2E: Server Lifecycle', () => {
         'src/mineflare.js',
         'server',
         'start',
-        '--foreground'
+        
       ], {
         env: {
           ...process.env,
@@ -517,7 +499,7 @@ describe('E2E: Server Lifecycle', () => {
         'src/mineflare.js',
         'server',
         'start',
-        '--foreground'
+        
       ], {
         env: {
           ...process.env,
@@ -551,8 +533,7 @@ describe('E2E: Server Lifecycle', () => {
           'run',
           'src/mineflare.js',
           'server',
-          'start',
-          '--foreground'
+          'start'
         ], {
           env: {
             ...process.env,

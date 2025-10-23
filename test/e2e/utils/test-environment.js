@@ -93,8 +93,8 @@ class TestEnvironment {
     
     this.log(`Starting server on port ${port}...`);
     
-    // Start the real server process
-    const serverProcess = spawn('bun', ['run', 'src/mineflare.js', 'server', 'start', '--foreground'], {
+    // Start the real server process (no flags = foreground mode)
+    const serverProcess = spawn('bun', ['run', 'src/mineflare.js', 'server', 'start'], {
       env: {
         ...process.env,
         MINEFLARE_CONFIG: configFile,
