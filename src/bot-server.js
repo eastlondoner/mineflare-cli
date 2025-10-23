@@ -37,8 +37,10 @@ class MinecraftBotServer {
       this.logEvent('spawn', { position: this.bot.entity.position });
       
       if (config.enableViewer !== false) {
-        this.viewer = mineflayerViewer(this.bot, { port: 3001, firstPerson: true });
-        console.log('Viewer started on port 3001');
+        const viewerPort = config.viewerPort || 3001;
+        const firstPerson = config.firstPerson !== undefined ? config.firstPerson : true;
+        this.viewer = mineflayerViewer(this.bot, { port: viewerPort, firstPerson });
+        console.log(`Viewer started on port ${viewerPort}`);
       }
     });
 

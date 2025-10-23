@@ -2,14 +2,17 @@
 
 const { Command } = require('commander');
 const axios = require('axios');
+const configManager = require('./config/ConfigManager');
 
 const program = new Command();
 
-const API_BASE = process.env.API_BASE || 'http://localhost:3000';
+// Get API base URL from configuration
+const config = configManager.get();
+const API_BASE = config.api.baseUrl;
 
 const api = axios.create({
   baseURL: API_BASE,
-  timeout: 30000
+  timeout: config.server.timeout
 });
 
 program

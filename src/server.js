@@ -1,15 +1,21 @@
 const MinecraftBotServer = require('./bot-server');
+const configManager = require('./config/ConfigManager');
+
+// Get configuration from config manager (supports env var overrides)
+const fullConfig = configManager.get();
 
 const config = {
-  host: process.env.MC_HOST || 'localhost',
-  port: parseInt(process.env.MC_PORT) || 8099,
-  username: process.env.MC_USERNAME || 'AIBot',
-  version: process.env.MC_VERSION || '1.21.8',
-  auth: process.env.MC_AUTH || 'offline',
-  enableViewer: process.env.ENABLE_VIEWER !== 'false'
+  host: fullConfig.minecraft.host,
+  port: fullConfig.minecraft.port,
+  username: fullConfig.minecraft.username,
+  version: fullConfig.minecraft.version,
+  auth: fullConfig.minecraft.auth,
+  enableViewer: fullConfig.viewer.enabled,
+  viewerPort: fullConfig.viewer.port,
+  firstPerson: fullConfig.viewer.firstPerson
 };
 
-const serverPort = parseInt(process.env.SERVER_PORT) || 3000;
+const serverPort = fullConfig.server.port;
 
 const server = new MinecraftBotServer();
 server.start(config, serverPort);

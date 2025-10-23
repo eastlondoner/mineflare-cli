@@ -4,15 +4,42 @@ const { Command } = require('commander');
 const axios = require('axios');
 const path = require('path');
 const fs = require('fs');
+const configManager = require('./config/ConfigManager');
+const Table = require('cli-table3');
+const chalk = require('chalk');
 
 const program = new Command();
 
-const API_BASE = process.env.API_BASE || 'http://localhost:3000';
+// Get API base URL from config
+const config = configManager.get();
+const API_BASE = config.api.baseUrl;
 
 const api = axios.create({
   baseURL: API_BASE,
-  timeout: 30000
+  timeout: config.server.timeout
 });
+
+// Helper function to display configuration in table format
+function displayConfigTable(config, schema) {
+  const table = new Table({
+    head: ['Section', 'Field', 'Value', 'Description'],
+    colWidths: [15, 20, 30, 45]
+  });
+  
+  for (const [section, fields] of Object.entries(config)) {
+    for (const [field, value] of Object.entries(fields)) {
+      const desc = schema[section]?.[field]?.description || '';
+      table.push([
+        section,
+        field,
+        JSON.stringify(value),
+        desc
+      ]);
+    }
+  }
+  
+  return table.toString();
+}
 
 program
   .name('mineflayer')
@@ -28,19 +55,29 @@ serverCmd
   .command('start')
   .description('Start the bot server')
   .option('-d, --daemon', 'Run as background daemon')
-  .option('-p, --port <port>', 'Server port', parseInt, 3000)
-  .option('--mc-host <host>', 'Minecraft server host', 'localhost')
-  .option('--mc-port <port>', 'Minecraft server port', parseInt, 8099)
-  .option('--mc-username <name>', 'Bot username', 'AIBot')
-  .option('--mc-version <version>', 'Minecraft version', '1.21.8')
+  .option('--profile <name>', 'Use specific configuration profile')
   .action((options) => {
-    process.env.SERVER_PORT = options.port;
-    process.env.MC_HOST = options.mcHost;
-    process.env.MC_PORT = options.mcPort;
-    process.env.MC_USERNAME = options.mcUsername;
-    process.env.MC_VERSION = options.mcVersion;
-    process.env.MC_AUTH = 'offline';
-    process.env.ENABLE_VIEWER = 'true';
+    // Switch to profile if specified
+    if (options.profile) {
+      try {
+        configManager.setActiveProfile(options.profile);
+        console.log(chalk.cyan(`Using profile: ${options.profile}`));
+      } catch (error) {
+        console.error(chalk.red('Error:'), error.message);
+        process.exit(1);
+      }
+    }
+    
+    // Get configuration and set environment variables for backward compatibility
+    const serverConfig = configManager.get();
+    process.env.SERVER_PORT = serverConfig.server.port;
+    process.env.MC_HOST = serverConfig.minecraft.host;
+    process.env.MC_PORT = serverConfig.minecraft.port;
+    process.env.MC_USERNAME = serverConfig.minecraft.username;
+    process.env.MC_VERSION = serverConfig.minecraft.version;
+    process.env.MC_AUTH = serverConfig.minecraft.auth;
+    process.env.ENABLE_VIEWER = serverConfig.viewer.enabled;
+    process.env.VIEWER_PORT = serverConfig.viewer.port;
 
     if (options.daemon) {
       const { spawn } = require('child_process');
@@ -59,10 +96,16 @@ serverCmd
       
       console.log(`Bot server started as daemon (PID: ${child.pid})`);
       console.log(`PID saved to: ${pidFile}`);
-      console.log(`Server running at: http://localhost:${options.port}`);
+      console.log(`Server running at: http://localhost:${serverConfig.server.port}`);
       process.exit(0);
     } else {
       console.log('Starting bot server...');
+      console.log(chalk.cyan('Configuration:'));
+      console.log(`  Profile: ${chalk.green(configManager.getActiveProfile())}`);
+      console.log(`  Server: ${chalk.green(`http://localhost:${serverConfig.server.port}`)}`);
+      console.log(`  Minecraft: ${chalk.green(`${serverConfig.minecraft.host}:${serverConfig.minecraft.port}`)}`);
+      console.log(`  Username: ${chalk.green(serverConfig.minecraft.username)}`);
+      console.log(`  Viewer: ${chalk.green(serverConfig.viewer.enabled ? `http://localhost:${serverConfig.viewer.port}` : 'disabled')}`);
       require('./server');
     }
   });
@@ -114,6 +157,165 @@ serverCmd
       console.log(`  Bot connected: ${response.data.botConnected}`);
     } catch {
       console.log(`✗ API not responding at ${API_BASE}`);
+    }
+  });
+
+// Configuration commands
+const configCmd = program
+  .command('config')
+  .description('Manage configuration');
+
+configCmd
+  .command('get [path]')
+  .description('Get configuration value(s)')
+  .option('-p, --profile <name>', 'Use specific profile')
+  .option('--json', 'Output as JSON')
+  .action((path, options) => {
+    try {
+      const value = configManager.get(path, options.profile);
+      
+      if (options.json) {
+        console.log(JSON.stringify(value, null, 2));
+      } else if (path) {
+        console.log(`${chalk.cyan(path)}: ${chalk.green(JSON.stringify(value))}`);
+      } else {
+        const schema = configManager.getSchema();
+        console.log(chalk.bold(`\nConfiguration (Profile: ${chalk.yellow(options.profile || configManager.getActiveProfile())})\n`));
+        console.log(displayConfigTable(value, schema));
+      }
+    } catch (error) {
+      console.error(chalk.red('Error:'), error.message);
+      process.exit(1);
+    }
+  });
+
+configCmd
+  .command('set <path> <value>')
+  .description('Set configuration value')
+  .option('-p, --profile <name>', 'Use specific profile')
+  .action((path, value, options) => {
+    try {
+      // Try to parse value as JSON first (for objects/arrays)
+      let parsedValue;
+      try {
+        parsedValue = JSON.parse(value);
+      } catch {
+        parsedValue = value;
+      }
+      
+      configManager.set(path, parsedValue, options.profile);
+      console.log(chalk.green('✓'), `Set ${chalk.cyan(path)} to ${chalk.green(JSON.stringify(parsedValue))}`);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error.message);
+      process.exit(1);
+    }
+  });
+
+configCmd
+  .command('profile <action> [name]')
+  .description('Manage configuration profiles (list, switch, create, delete)')
+  .option('-b, --base <profile>', 'Base profile for create action', 'default')
+  .action((action, name, options) => {
+    try {
+      switch (action) {
+        case 'list':
+          const profiles = configManager.listProfiles();
+          const active = configManager.getActiveProfile();
+          console.log(chalk.bold('\nAvailable Profiles:\n'));
+          profiles.forEach(profile => {
+            const marker = profile === active ? chalk.green('* ') : '  ';
+            console.log(marker + chalk.cyan(profile));
+          });
+          console.log();
+          break;
+          
+        case 'switch':
+          if (!name) {
+            console.error(chalk.red('Error:'), 'Profile name required');
+            process.exit(1);
+          }
+          configManager.setActiveProfile(name);
+          console.log(chalk.green('✓'), `Switched to profile: ${chalk.cyan(name)}`);
+          break;
+          
+        case 'create':
+          if (!name) {
+            console.error(chalk.red('Error:'), 'Profile name required');
+            process.exit(1);
+          }
+          configManager.createProfile(name, options.base);
+          console.log(chalk.green('✓'), `Created profile: ${chalk.cyan(name)}`);
+          break;
+          
+        case 'delete':
+          if (!name) {
+            console.error(chalk.red('Error:'), 'Profile name required');
+            process.exit(1);
+          }
+          configManager.deleteProfile(name);
+          console.log(chalk.green('✓'), `Deleted profile: ${chalk.cyan(name)}`);
+          break;
+          
+        default:
+          console.error(chalk.red('Error:'), `Unknown action: ${action}`);
+          console.log('Valid actions: list, switch, create, delete');
+          process.exit(1);
+      }
+    } catch (error) {
+      console.error(chalk.red('Error:'), error.message);
+      process.exit(1);
+    }
+  });
+
+configCmd
+  .command('reset')
+  .description('Reset configuration to defaults')
+  .option('-p, --profile <name>', 'Reset specific profile')
+  .action((options) => {
+    try {
+      configManager.reset(options.profile);
+      console.log(chalk.green('✓'), 'Configuration reset to defaults');
+    } catch (error) {
+      console.error(chalk.red('Error:'), error.message);
+      process.exit(1);
+    }
+  });
+
+configCmd
+  .command('export [file]')
+  .description('Export configuration to file')
+  .option('-p, --profile <name>', 'Export specific profile')
+  .action((file, options) => {
+    try {
+      const exportConfig = configManager.exportConfig(options.profile);
+      const json = JSON.stringify(exportConfig, null, 2);
+      
+      if (file) {
+        fs.writeFileSync(file, json);
+        console.log(chalk.green('✓'), `Configuration exported to: ${chalk.cyan(file)}`);
+      } else {
+        console.log(json);
+      }
+    } catch (error) {
+      console.error(chalk.red('Error:'), error.message);
+      process.exit(1);
+    }
+  });
+
+configCmd
+  .command('import <file>')
+  .description('Import configuration from file')
+  .option('-p, --profile <name>', 'Import to specific profile')
+  .action((file, options) => {
+    try {
+      const json = fs.readFileSync(file, 'utf8');
+      const importConfig = JSON.parse(json);
+      
+      configManager.importConfig(importConfig, options.profile);
+      console.log(chalk.green('✓'), `Configuration imported from: ${chalk.cyan(file)}`);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error.message);
+      process.exit(1);
     }
   });
 
@@ -189,6 +391,7 @@ program
     try {
       const response = await api.get('/screenshot');
       if (options.output) {
+        const fs = require('fs');
         fs.writeFileSync(options.output, response.data.screenshot, 'base64');
         console.log(`Screenshot saved to ${options.output}`);
       } else {
@@ -374,6 +577,7 @@ program
   .option('--no-stop', 'Continue on error (default stops on first error)')
   .action(async (options) => {
     try {
+      const fs = require('fs');
       const instructionsJson = fs.readFileSync(options.file, 'utf8');
       const instructions = JSON.parse(instructionsJson);
       
