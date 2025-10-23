@@ -15,6 +15,14 @@ if ! command -v git &> /dev/null; then
     exit 1
 fi
 
+# Check if jq is available (needed for CI monitoring)
+jq_available=true
+if ! command -v jq &> /dev/null; then
+    jq_available=false
+    echo -e "${YELLOW}Warning: jq is not installed. CI monitoring will have limited functionality.${NC}"
+    echo -e "Install jq for full features: ${BLUE}https://stedolan.github.io/jq/download/${NC}\n"
+fi
+
 # Check if we're in a git repository
 if ! git rev-parse --git-dir > /dev/null 2>&1; then
     echo -e "${RED}Error: Not in a git repository${NC}"
@@ -218,34 +226,177 @@ else
     exit 1
 fi
 
-echo -e "\n${GREEN}✓ Release $new_tag completed successfully!${NC}"
+echo -e "\n${GREEN}✓ Release $new_tag pushed successfully!${NC}"
 
-# If gh CLI is available, offer to create a GitHub release
+# If gh CLI is available, monitor CI and handle release
 if command -v gh &> /dev/null; then
+    echo -e "\n${BLUE}=== GitHub Actions CI Monitoring ===${NC}"
+    
+    # Wait a moment for workflows to be triggered
+    echo "Waiting for CI workflows to start..."
+    sleep 5
+    
+    # Get the list of workflow runs for this commit
+    commit_sha=$(git rev-parse HEAD)
+    echo -e "Monitoring workflows for commit: ${YELLOW}${commit_sha:0:7}${NC}"
+    
+    # Function to check all workflow statuses
+    check_workflows() {
+        local all_success=true
+        local any_running=false
+        local any_failed=false
+        
+        # Get all workflow runs for this commit
+        workflow_runs=$(gh run list --commit "$commit_sha" --json databaseId,name,status,conclusion,workflowName --limit 10)
+        
+        if [ -z "$workflow_runs" ] || [ "$workflow_runs" = "[]" ]; then
+            echo -e "${YELLOW}No workflows found for this commit yet...${NC}"
+            return 2  # No workflows found
+        fi
+        
+        echo -e "\n${BLUE}Workflow Status:${NC}"
+        if [ "$jq_available" = true ]; then
+            echo "$workflow_runs" | jq -r '.[] | "\(.workflowName): \(.status) \(if .conclusion then "(\(.conclusion))" else "" end)"' | while IFS= read -r line; do
+                if [[ $line == *"completed"* ]]; then
+                    if [[ $line == *"success"* ]]; then
+                        echo -e "  ${GREEN}✓ $line${NC}"
+                    elif [[ $line == *"failure"* ]] || [[ $line == *"cancelled"* ]]; then
+                        echo -e "  ${RED}✗ $line${NC}"
+                    else
+                        echo -e "  ${YELLOW}⚠ $line${NC}"
+                    fi
+                else
+                    echo -e "  ${YELLOW}⏳ $line${NC}"
+                fi
+            done
+            
+            # Check the actual status of each workflow
+            echo "$workflow_runs" | jq -r '.[] | "\(.status)|\(.conclusion)"' | while IFS='|' read -r status conclusion; do
+                if [ "$status" != "completed" ]; then
+                    any_running=true
+                elif [ "$conclusion" != "success" ] && [ "$conclusion" != "skipped" ]; then
+                    any_failed=true
+                    all_success=false
+                fi
+            done
+        else
+            # Fallback when jq is not available - use gh run list
+            echo "  Checking workflow status (limited view without jq)..."
+            
+            # Use gh to check status directly
+            if gh run list --commit "$commit_sha" --limit 10 | grep -q "in_progress\|queued"; then
+                any_running=true
+            fi
+            
+            if gh run list --commit "$commit_sha" --limit 10 | grep -q "failure\|cancelled"; then
+                any_failed=true
+                all_success=false
+            fi
+        fi
+        
+        if $any_running; then
+            return 1  # Still running
+        elif $any_failed; then
+            return 3  # Failed
+        else
+            return 0  # All success
+        fi
+    }
+    
+    # Poll for workflow completion
+    max_wait_time=1800  # 30 minutes max
+    poll_interval=15     # Check every 15 seconds
+    elapsed_time=0
+    
+    echo -e "\n${BLUE}Monitoring CI workflows (max wait: ${max_wait_time}s)...${NC}"
+    echo "Press Ctrl+C to skip CI monitoring and continue"
+    
+    while [ $elapsed_time -lt $max_wait_time ]; do
+        check_workflows
+        result=$?
+        
+        if [ $result -eq 0 ]; then
+            echo -e "\n${GREEN}✓ All CI workflows completed successfully!${NC}"
+            ci_passed=true
+            break
+        elif [ $result -eq 3 ]; then
+            echo -e "\n${RED}✗ One or more CI workflows failed${NC}"
+            ci_passed=false
+            break
+        elif [ $result -eq 2 ]; then
+            # No workflows found yet
+            echo -ne "\r${YELLOW}Waiting for workflows to start... (${elapsed_time}s)${NC}"
+        else
+            # Still running
+            echo -ne "\r${YELLOW}Workflows still running... (${elapsed_time}s)${NC}"
+        fi
+        
+        sleep $poll_interval
+        elapsed_time=$((elapsed_time + poll_interval))
+    done
+    
+    if [ $elapsed_time -ge $max_wait_time ]; then
+        echo -e "\n${YELLOW}⚠ Timeout waiting for CI workflows${NC}"
+        ci_passed=false
+    fi
+    
+    # Handle release creation based on CI status
     echo
-    read -p "Create a GitHub release with gh CLI? (y/n): " create_release
+    if [ "$ci_passed" = true ]; then
+        echo -e "${GREEN}CI passed!${NC} Ready to create a GitHub release."
+        read -p "Create and publish a GitHub release? (y/n): " create_release
+    else
+        echo -e "${YELLOW}CI did not pass or timed out.${NC}"
+        read -p "Create a DRAFT GitHub release anyway? (y/n): " create_release
+    fi
     
     if [ "$create_release" = "y" ] || [ "$create_release" = "Y" ]; then
         echo "Creating GitHub release..."
         
-        # Check if release notes file exists
+        # Determine if release should be draft
+        if [ "$ci_passed" = true ]; then
+            draft_flag=""
+            prerelease_flag=""
+        else
+            draft_flag="--draft"
+            prerelease_flag=""
+            echo -e "${YELLOW}Creating as draft release since CI didn't pass${NC}"
+        fi
+        
+        # Create the release
         if [ -f "CHANGELOG.md" ]; then
             read -p "Generate release notes from CHANGELOG.md? (y/n): " use_changelog
             if [ "$use_changelog" = "y" ] || [ "$use_changelog" = "Y" ]; then
-                gh release create "$new_tag" --title "$new_tag" --notes-file CHANGELOG.md
+                gh release create "$new_tag" --title "$new_tag" --notes-file CHANGELOG.md $draft_flag $prerelease_flag
             else
-                gh release create "$new_tag" --title "$new_tag" --notes "$release_notes"
+                gh release create "$new_tag" --title "$new_tag" --notes "$release_notes" $draft_flag $prerelease_flag
             fi
         else
-            gh release create "$new_tag" --title "$new_tag" --notes "$release_notes"
+            # Try to auto-generate release notes
+            read -p "Auto-generate release notes from commits? (y/n): " auto_notes
+            if [ "$auto_notes" = "y" ] || [ "$auto_notes" = "Y" ]; then
+                gh release create "$new_tag" --title "$new_tag" --generate-notes $draft_flag $prerelease_flag
+            else
+                gh release create "$new_tag" --title "$new_tag" --notes "$release_notes" $draft_flag $prerelease_flag
+            fi
         fi
         
         if [ $? -eq 0 ]; then
-            echo -e "${GREEN}GitHub release created successfully${NC}"
+            if [ "$ci_passed" = true ]; then
+                echo -e "${GREEN}✓ GitHub release published successfully!${NC}"
+                echo -e "View at: ${BLUE}https://github.com/$(gh repo view --json nameWithOwner -q .nameWithOwner)/releases/tag/$new_tag${NC}"
+            else
+                echo -e "${YELLOW}✓ GitHub draft release created${NC}"
+                echo "You can publish it manually after CI passes at:"
+                echo -e "${BLUE}https://github.com/$(gh repo view --json nameWithOwner -q .nameWithOwner)/releases${NC}"
+            fi
         else
             echo -e "${YELLOW}Failed to create GitHub release${NC}"
         fi
     fi
+else
+    echo -e "\n${YELLOW}gh CLI not found. Install it to enable CI monitoring and GitHub releases.${NC}"
+    echo "Visit: https://cli.github.com/manual/installation"
 fi
 
 echo -e "\n${BLUE}=== Done ===${NC}"
