@@ -351,47 +351,112 @@ if command -v gh &> /dev/null; then
     fi
     
     if [ "$create_release" = "y" ] || [ "$create_release" = "Y" ]; then
-        echo "Creating GitHub release..."
+        # Check if release already exists
+        existing_release=$(gh release view "$new_tag" 2>&1 || echo "NOT_FOUND")
         
-        # Determine if release should be draft
-        if [ "$ci_passed" = true ]; then
-            draft_flag=""
-            prerelease_flag=""
-        else
-            draft_flag="--draft"
-            prerelease_flag=""
-            echo -e "${YELLOW}Creating as draft release since CI didn't pass${NC}"
-        fi
-        
-        # Create the release
-        if [ -f "CHANGELOG.md" ]; then
-            read -p "Generate release notes from CHANGELOG.md? (y/n): " use_changelog
-            if [ "$use_changelog" = "y" ] || [ "$use_changelog" = "Y" ]; then
-                gh release create "$new_tag" --title "$new_tag" --notes-file CHANGELOG.md $draft_flag $prerelease_flag
+        if [[ "$existing_release" != *"NOT_FOUND"* ]] && [[ "$existing_release" != *"release not found"* ]]; then
+            echo -e "${YELLOW}Release $new_tag already exists!${NC}"
+            
+            # Check if it's a draft
+            is_draft=$(echo "$existing_release" | grep -c "draft:true" || true)
+            
+            if [ "$is_draft" -gt 0 ]; then
+                echo "The existing release is a draft."
+                read -p "Do you want to publish the existing draft release? (y/n): " publish_draft
+                
+                if [ "$publish_draft" = "y" ] || [ "$publish_draft" = "Y" ]; then
+                    echo "Publishing draft release..."
+                    gh release edit "$new_tag" --draft=false
+                    
+                    if [ $? -eq 0 ]; then
+                        echo -e "${GREEN}✓ Draft release published successfully!${NC}"
+                        echo -e "View at: ${BLUE}https://github.com/$(gh repo view --json nameWithOwner -q .nameWithOwner)/releases/tag/$new_tag${NC}"
+                    else
+                        echo -e "${RED}Failed to publish draft release${NC}"
+                    fi
+                else
+                    echo "Keeping release as draft."
+                fi
             else
-                gh release create "$new_tag" --title "$new_tag" --notes "$release_notes" $draft_flag $prerelease_flag
+                echo "The existing release is already published."
+                read -p "Do you want to edit the existing release? (y/n): " edit_release
+                
+                if [ "$edit_release" = "y" ] || [ "$edit_release" = "Y" ]; then
+                    # Update release notes
+                    if [ -f "CHANGELOG.md" ]; then
+                        read -p "Update release notes from CHANGELOG.md? (y/n): " use_changelog
+                        if [ "$use_changelog" = "y" ] || [ "$use_changelog" = "Y" ]; then
+                            gh release edit "$new_tag" --notes-file CHANGELOG.md
+                        else
+                            echo "Enter new release notes (or press Enter to keep current):"
+                            read -r new_notes
+                            if [ -n "$new_notes" ]; then
+                                gh release edit "$new_tag" --notes "$new_notes"
+                            fi
+                        fi
+                    else
+                        echo "Enter new release notes (or press Enter to keep current):"
+                        read -r new_notes
+                        if [ -n "$new_notes" ]; then
+                            gh release edit "$new_tag" --notes "$new_notes"
+                        fi
+                    fi
+                    
+                    if [ $? -eq 0 ]; then
+                        echo -e "${GREEN}✓ Release updated successfully!${NC}"
+                        echo -e "View at: ${BLUE}https://github.com/$(gh repo view --json nameWithOwner -q .nameWithOwner)/releases/tag/$new_tag${NC}"
+                    else
+                        echo -e "${RED}Failed to update release${NC}"
+                    fi
+                else
+                    echo -e "${BLUE}Release $new_tag already exists at:${NC}"
+                    echo -e "${BLUE}https://github.com/$(gh repo view --json nameWithOwner -q .nameWithOwner)/releases/tag/$new_tag${NC}"
+                fi
             fi
         else
-            # Try to auto-generate release notes
-            read -p "Auto-generate release notes from commits? (y/n): " auto_notes
-            if [ "$auto_notes" = "y" ] || [ "$auto_notes" = "Y" ]; then
-                gh release create "$new_tag" --title "$new_tag" --generate-notes $draft_flag $prerelease_flag
-            else
-                gh release create "$new_tag" --title "$new_tag" --notes "$release_notes" $draft_flag $prerelease_flag
-            fi
-        fi
-        
-        if [ $? -eq 0 ]; then
+            # Release doesn't exist, create it
+            echo "Creating GitHub release..."
+            
+            # Determine if release should be draft
             if [ "$ci_passed" = true ]; then
-                echo -e "${GREEN}✓ GitHub release published successfully!${NC}"
-                echo -e "View at: ${BLUE}https://github.com/$(gh repo view --json nameWithOwner -q .nameWithOwner)/releases/tag/$new_tag${NC}"
+                draft_flag=""
+                prerelease_flag=""
             else
-                echo -e "${YELLOW}✓ GitHub draft release created${NC}"
-                echo "You can publish it manually after CI passes at:"
-                echo -e "${BLUE}https://github.com/$(gh repo view --json nameWithOwner -q .nameWithOwner)/releases${NC}"
+                draft_flag="--draft"
+                prerelease_flag=""
+                echo -e "${YELLOW}Creating as draft release since CI didn't pass${NC}"
             fi
-        else
-            echo -e "${YELLOW}Failed to create GitHub release${NC}"
+            
+            # Create the release
+            if [ -f "CHANGELOG.md" ]; then
+                read -p "Generate release notes from CHANGELOG.md? (y/n): " use_changelog
+                if [ "$use_changelog" = "y" ] || [ "$use_changelog" = "Y" ]; then
+                    gh release create "$new_tag" --title "$new_tag" --notes-file CHANGELOG.md $draft_flag $prerelease_flag
+                else
+                    gh release create "$new_tag" --title "$new_tag" --notes "$release_notes" $draft_flag $prerelease_flag
+                fi
+            else
+                # Try to auto-generate release notes
+                read -p "Auto-generate release notes from commits? (y/n): " auto_notes
+                if [ "$auto_notes" = "y" ] || [ "$auto_notes" = "Y" ]; then
+                    gh release create "$new_tag" --title "$new_tag" --generate-notes $draft_flag $prerelease_flag
+                else
+                    gh release create "$new_tag" --title "$new_tag" --notes "$release_notes" $draft_flag $prerelease_flag
+                fi
+            fi
+            
+            if [ $? -eq 0 ]; then
+                if [ "$ci_passed" = true ]; then
+                    echo -e "${GREEN}✓ GitHub release published successfully!${NC}"
+                    echo -e "View at: ${BLUE}https://github.com/$(gh repo view --json nameWithOwner -q .nameWithOwner)/releases/tag/$new_tag${NC}"
+                else
+                    echo -e "${YELLOW}✓ GitHub draft release created${NC}"
+                    echo "You can publish it manually after CI passes at:"
+                    echo -e "${BLUE}https://github.com/$(gh repo view --json nameWithOwner -q .nameWithOwner)/releases${NC}"
+                fi
+            else
+                echo -e "${YELLOW}Failed to create GitHub release${NC}"
+            fi
         fi
     fi
 else
