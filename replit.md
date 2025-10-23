@@ -152,6 +152,14 @@ The project includes a comprehensive E2E testing framework with **zero mocks**:
   - Safely handles digging plugin cleanup errors that caused the original crash
   - Works on both operator and non-operator servers
   - Prevents bots from getting stuck on death screen
+- 2025-10-23: Added advanced relative movement and orientation features
+  - Implemented relative movement commands: --forward, --backward, --left, --right with block distances
+  - Added turn commands: --turn-left, --turn-right, --look-up, --look-down with degree parameters
+  - Added cardinal direction commands: --north, --south, --east, --west for quick orientation
+  - Enhanced state display with compass direction, readable pitch/yaw, movement status, and environment info
+  - Full batch command support for all new movement types
+  - Created example batch files: batch-relative-movement.json, batch-navigation.json, batch-exploration.json
+  - API supports both absolute and relative movement/look operations
 
 ## User Preferences
 None specified yet.

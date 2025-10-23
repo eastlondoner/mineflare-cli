@@ -28,8 +28,9 @@ bun run build
 
 # Control the bot
 ./mineflare chat "Hello world!"
-./mineflare move -x 1 --sprint
-./mineflare batch -f examples/batch-simple.json
+./mineflare move --forward 5 --sprint      # Move forward 5 blocks
+./mineflare look --turn-left 90           # Turn left 90 degrees
+./mineflare batch -f examples/batch-relative-movement.json  # Run patrol pattern
 
 # Stop server
 ./mineflare server stop
@@ -71,9 +72,33 @@ bun run cli screenshot          # Get screenshot as base64
 ### Actions
 ```bash
 bun run cli chat "Hello!"                    # Send chat message
-bun run cli move -x 1 -y 0 -z 0 --sprint    # Move forward sprinting
+
+# Movement - Absolute
+bun run cli move -x 1 -y 0 -z 0 --sprint    # Move using absolute coordinates
+
+# Movement - Relative
+bun run cli move --forward 5                 # Move 5 blocks forward
+bun run cli move --backward 3                # Move 3 blocks backward
+bun run cli move --left 2                    # Strafe left 2 blocks
+bun run cli move --right 2                   # Strafe right 2 blocks
+bun run cli move --forward 10 --sprint       # Sprint forward 10 blocks
+
 bun run cli stop                             # Stop movement
-bun run cli look --yaw 0 --pitch 0           # Look direction
+
+# Looking - Absolute
+bun run cli look --yaw 0 --pitch 0           # Look at specific angles
+
+# Looking - Relative
+bun run cli look --turn-left 90              # Turn left 90 degrees
+bun run cli look --turn-right 45             # Turn right 45 degrees
+bun run cli look --look-up 30                # Look up 30 degrees
+bun run cli look --look-down 30              # Look down 30 degrees
+
+# Looking - Cardinal Directions
+bun run cli look --north                     # Face north
+bun run cli look --south                     # Face south
+bun run cli look --east                      # Face east
+bun run cli look --west                      # Face west
 
 # Block manipulation
 bun run cli dig -x 0 -y 64 -z 0             # Dig/break block
@@ -88,9 +113,12 @@ bun run cli craft -i oak_planks -c 4        # Craft 4 oak planks
 bun run cli equip -i diamond_sword          # Equip item to hand
 
 # Batch Jobs (execute multiple instructions in sequence)
-bun run cli batch -f examples/batch-simple.json     # Run simple batch job
-bun run cli batch -f examples/batch-mining.json     # Run mining operations
-bun run cli batch -f batch.json --no-stop           # Continue even if errors occur
+bun run cli batch -f examples/batch-simple.json            # Run simple batch job
+bun run cli batch -f examples/batch-mining.json            # Run mining operations
+bun run cli batch -f examples/batch-relative-movement.json # Patrol in square pattern
+bun run cli batch -f examples/batch-navigation.json        # Complex navigation demo
+bun run cli batch -f examples/batch-exploration.json       # Area exploration
+bun run cli batch -f batch.json --no-stop                  # Continue even if errors occur
 ```
 
 ## API Examples
@@ -117,11 +145,37 @@ curl http://localhost:3000/events?since=1698000000000
 curl http://localhost:3000/screenshot
 ```
 
-### Move Bot
+### Move Bot - Absolute
 ```bash
 curl -X POST http://localhost:3000/move \
   -H "Content-Type: application/json" \
   -d '{"x": 1, "y": 0, "z": 0, "sprint": true}'
+```
+
+### Move Bot - Relative
+```bash
+# Move forward 5 blocks
+curl -X POST http://localhost:3000/move \
+  -H "Content-Type: application/json" \
+  -d '{"relative": {"forward": 5}, "sprint": false}'
+
+# Strafe left 3 blocks
+curl -X POST http://localhost:3000/move \
+  -H "Content-Type: application/json" \
+  -d '{"relative": {"left": 3}}'
+```
+
+### Look - Turn and Cardinal Directions
+```bash
+# Turn left 90 degrees
+curl -X POST http://localhost:3000/look \
+  -H "Content-Type: application/json" \
+  -d '{"relative": {"yaw_delta": -90}}'
+
+# Look north
+curl -X POST http://localhost:3000/look \
+  -H "Content-Type: application/json" \
+  -d '{"cardinal": "north"}'
 ```
 
 ### Execute Batch Job
