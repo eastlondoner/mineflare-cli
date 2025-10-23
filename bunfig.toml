@@ -1,0 +1,6 @@
+[test]
+# Test configuration for Bun
+preload = ["./test/utils/test-setup.js"]
+coverage = true
+coverageReporter = ["text", "lcov", "json"]
+coverageThreshold = { lines = 80, functions = 80, branches = 75, statements = 80 }
