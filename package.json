@@ -11,6 +11,7 @@
     "start": "bun src/server.js",
     "cli": "bun src/cli.js",
     "mineflayer": "bun src/mineflayer.js",
+    "config": "bun src/config-cli.js",
     "build": "bun build --compile --minify --sourcemap ./src/mineflayer.js --outfile mineflayer",
     "build:linux": "bun build --compile --minify --sourcemap --target=bun-linux-x64 ./src/mineflayer.js --outfile mineflayer-linux",
     "build:windows": "bun build --compile --minify --sourcemap --target=bun-windows-x64 ./src/mineflayer.js --outfile mineflayer.exe",
