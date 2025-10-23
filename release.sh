@@ -136,6 +136,54 @@ if [ -f "package.json" ]; then
         git add package.json
         git commit -m "Bump version to $new_version"
         echo -e "${GREEN}Committed version bump${NC}"
+        
+        # Ask if user wants to rebuild binaries with new version
+        echo
+        read -p "Rebuild binaries with new version $new_version? (y/n): " rebuild_binaries
+        
+        if [ "$rebuild_binaries" = "y" ] || [ "$rebuild_binaries" = "Y" ]; then
+            echo -e "${BLUE}Rebuilding binaries with version $new_version...${NC}"
+            
+            # Check if bun is available
+            if command -v bun &> /dev/null; then
+                # Build for current platform
+                if bun run build 2>/dev/null; then
+                    echo -e "${GREEN}✓ Built default binary${NC}"
+                else
+                    echo -e "${YELLOW}⚠ Failed to build default binary${NC}"
+                fi
+                
+                # Optionally build for all platforms
+                read -p "Build for all platforms? (y/n): " build_all
+                if [ "$build_all" = "y" ] || [ "$build_all" = "Y" ]; then
+                    echo -e "${BLUE}Building for all platforms...${NC}"
+                    
+                    if bun run build:linux 2>/dev/null; then
+                        echo -e "${GREEN}✓ Built Linux x64 binary${NC}"
+                    else
+                        echo -e "${YELLOW}⚠ Failed to build Linux x64 binary${NC}"
+                    fi
+                    
+                    if bun run build:linux-arm64 2>/dev/null; then
+                        echo -e "${GREEN}✓ Built Linux ARM64 binary${NC}"
+                    else
+                        echo -e "${YELLOW}⚠ Failed to build Linux ARM64 binary${NC}"
+                    fi
+                    
+                    if bun run build:mac 2>/dev/null; then
+                        echo -e "${GREEN}✓ Built macOS ARM64 binary${NC}"
+                    else
+                        echo -e "${YELLOW}⚠ Failed to build macOS ARM64 binary${NC}"
+                    fi
+                fi
+                
+                echo -e "${GREEN}Binary rebuild complete${NC}"
+                echo -e "${YELLOW}Note: These are local builds. GitHub Actions will build the release binaries.${NC}"
+            else
+                echo -e "${RED}Bun is not installed. Cannot rebuild binaries.${NC}"
+                echo -e "${YELLOW}GitHub Actions will build the release binaries after push.${NC}"
+            fi
+        fi
     fi
 fi
 

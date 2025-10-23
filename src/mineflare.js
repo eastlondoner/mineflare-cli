@@ -40,10 +40,13 @@ function displayConfigTable(config, schema) {
   return table.toString();
 }
 
+// Use build-time VERSION constant, fallback to package.json for development
+const VERSION = typeof __VERSION__ !== 'undefined' ? __VERSION__ : require('../package.json').version;
+
 program
   .name('mineflare')
   .description('Minecraft bot controller with HTTP API')
-  .version('1.0.0');
+  .version(VERSION);
 
 // Server commands
 const serverCmd = program
