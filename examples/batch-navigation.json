@@ -1,0 +1,88 @@
+[
+  {
+    "type": "chat",
+    "params": {
+      "message": "Starting navigation demonstration"
+    }
+  },
+  {
+    "type": "look",
+    "params": {
+      "cardinal": "north"
+    },
+    "delay": 1000
+  },
+  {
+    "type": "move",
+    "params": {
+      "relative": {
+        "forward": 10
+      },
+      "sprint": true
+    },
+    "delay": 3000
+  },
+  {
+    "type": "look",
+    "params": {
+      "relative": {
+        "yaw_delta": -45,
+        "pitch_delta": -15
+      }
+    },
+    "delay": 1000
+  },
+  {
+    "type": "move",
+    "params": {
+      "relative": {
+        "forward": 5,
+        "left": 3
+      },
+      "sprint": false
+    },
+    "delay": 2000
+  },
+  {
+    "type": "look",
+    "params": {
+      "cardinal": "east"
+    },
+    "delay": 1000
+  },
+  {
+    "type": "move",
+    "params": {
+      "relative": {
+        "right": 5
+      },
+      "sprint": false
+    },
+    "delay": 2000
+  },
+  {
+    "type": "move",
+    "params": {
+      "relative": {
+        "backward": 10
+      },
+      "sprint": true
+    },
+    "delay": 3000
+  },
+  {
+    "type": "look",
+    "params": {
+      "relative": {
+        "yaw_delta": 180
+      }
+    },
+    "delay": 1000
+  },
+  {
+    "type": "chat",
+    "params": {
+      "message": "Navigation complete"
+    }
+  }
+]

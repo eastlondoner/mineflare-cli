@@ -1,0 +1,81 @@
+[
+  {
+    "type": "chat",
+    "params": {
+      "message": "Starting relative movement patrol"
+    }
+  },
+  {
+    "type": "move",
+    "params": {
+      "relative": {
+        "forward": 5
+      },
+      "sprint": false
+    },
+    "delay": 2000
+  },
+  {
+    "type": "look",
+    "params": {
+      "relative": {
+        "yaw_delta": 90
+      }
+    },
+    "delay": 1000
+  },
+  {
+    "type": "move",
+    "params": {
+      "relative": {
+        "forward": 5
+      },
+      "sprint": false
+    },
+    "delay": 2000
+  },
+  {
+    "type": "look",
+    "params": {
+      "relative": {
+        "yaw_delta": 90
+      }
+    },
+    "delay": 1000
+  },
+  {
+    "type": "move",
+    "params": {
+      "relative": {
+        "forward": 5
+      },
+      "sprint": false
+    },
+    "delay": 2000
+  },
+  {
+    "type": "look",
+    "params": {
+      "relative": {
+        "yaw_delta": 90
+      }
+    },
+    "delay": 1000
+  },
+  {
+    "type": "move",
+    "params": {
+      "relative": {
+        "forward": 5
+      },
+      "sprint": false
+    },
+    "delay": 2000
+  },
+  {
+    "type": "chat",
+    "params": {
+      "message": "Completed square patrol pattern"
+    }
+  }
+]

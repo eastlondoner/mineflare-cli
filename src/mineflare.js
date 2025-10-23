@@ -473,14 +473,46 @@ program
 program
   .command('look')
   .description('Make bot look in direction')
-  .requiredOption('--yaw <value>', 'Yaw angle', parseFloat)
-  .requiredOption('--pitch <value>', 'Pitch angle', parseFloat)
+  .option('--yaw <value>', 'Yaw angle in radians', parseFloat)
+  .option('--pitch <value>', 'Pitch angle in radians', parseFloat)
+  .option('--turn-left <degrees>', 'Turn left by N degrees', parseFloat)
+  .option('--turn-right <degrees>', 'Turn right by N degrees', parseFloat)
+  .option('--look-up <degrees>', 'Look up by N degrees', parseFloat)
+  .option('--look-down <degrees>', 'Look down by N degrees', parseFloat)
+  .option('--north', 'Look north')
+  .option('--south', 'Look south')
+  .option('--east', 'Look east')
+  .option('--west', 'Look west')
   .action(async (options) => {
     try {
-      const response = await api.post('/look', {
-        yaw: options.yaw,
-        pitch: options.pitch
-      });
+      const lookData = {};
+      
+      // Check for relative turns
+      if (options.turnLeft !== undefined || options.turnRight !== undefined ||
+          options.lookUp !== undefined || options.lookDown !== undefined) {
+        lookData.relative = {
+          yaw_delta: options.turnLeft ? -options.turnLeft : (options.turnRight || 0),
+          pitch_delta: options.lookUp ? -options.lookUp : (options.lookDown || 0)
+        };
+      }
+      // Check for cardinal directions
+      else if (options.north || options.south || options.east || options.west) {
+        if (options.north) lookData.cardinal = 'north';
+        if (options.south) lookData.cardinal = 'south';
+        if (options.east) lookData.cardinal = 'east';
+        if (options.west) lookData.cardinal = 'west';
+      }
+      // Use absolute angles
+      else {
+        if (options.yaw === undefined || options.pitch === undefined) {
+          console.error('Error: Either provide --yaw and --pitch, or use relative/cardinal options');
+          return;
+        }
+        lookData.yaw = options.yaw;
+        lookData.pitch = options.pitch;
+      }
+      
+      const response = await api.post('/look', lookData);
       console.log(JSON.stringify(response.data, null, 2));
     } catch (error) {
       console.error('Error:', error.message);

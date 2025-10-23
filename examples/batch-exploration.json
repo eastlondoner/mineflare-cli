@@ -1,0 +1,108 @@
+[
+  {
+    "type": "chat",
+    "params": {
+      "message": "Beginning exploration sequence"
+    }
+  },
+  {
+    "type": "look",
+    "params": {
+      "relative": {
+        "yaw_delta": -90,
+        "pitch_delta": -45
+      }
+    },
+    "delay": 500
+  },
+  {
+    "type": "look",
+    "params": {
+      "relative": {
+        "yaw_delta": 180,
+        "pitch_delta": 0
+      }
+    },
+    "delay": 500
+  },
+  {
+    "type": "look",
+    "params": {
+      "relative": {
+        "yaw_delta": -90,
+        "pitch_delta": 45
+      }
+    },
+    "delay": 500
+  },
+  {
+    "type": "chat",
+    "params": {
+      "message": "Area scanned, moving to next location"
+    },
+    "delay": 1000
+  },
+  {
+    "type": "move",
+    "params": {
+      "relative": {
+        "forward": 8,
+        "up": 1
+      },
+      "sprint": false
+    },
+    "delay": 2500
+  },
+  {
+    "type": "look",
+    "params": {
+      "relative": {
+        "pitch_delta": -30
+      }
+    },
+    "delay": 500
+  },
+  {
+    "type": "move",
+    "params": {
+      "relative": {
+        "left": 4
+      },
+      "sprint": false
+    },
+    "delay": 2000
+  },
+  {
+    "type": "look",
+    "params": {
+      "cardinal": "south"
+    },
+    "delay": 500
+  },
+  {
+    "type": "move",
+    "params": {
+      "relative": {
+        "forward": 10
+      },
+      "sprint": true
+    },
+    "delay": 3000
+  },
+  {
+    "type": "look",
+    "params": {
+      "relative": {
+        "yaw_delta": 360,
+        "pitch_delta": 0
+      }
+    },
+    "delay": 2000
+  },
+  {
+    "type": "chat",
+    "params": {
+      "message": "Exploration complete, area surveyed"
+    }
+  }
+]

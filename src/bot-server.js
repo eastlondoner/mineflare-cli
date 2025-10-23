@@ -252,16 +252,86 @@ class MinecraftBotServer {
         return res.status(400).json({ error: 'Bot not connected' });
       }
 
+      // Helper function to get compass direction from yaw
+      function getCompassDirection(yaw) {
+        // Convert yaw to degrees (0-360)
+        let degrees = (yaw * 180 / Math.PI + 180) % 360;
+        if (degrees < 0) degrees += 360;
+        
+        // Determine compass direction
+        const directions = ['North', 'North-East', 'East', 'South-East', 'South', 'South-West', 'West', 'North-West'];
+        const index = Math.round(degrees / 45) % 8;
+        return directions[index];
+      }
+      
+      // Helper function to get pitch description
+      function getPitchDescription(pitch) {
+        const degrees = pitch * 180 / Math.PI;
+        if (degrees < -45) return 'looking up';
+        if (degrees > 45) return 'looking down';
+        if (degrees < -15) return 'looking slightly up';
+        if (degrees > 15) return 'looking slightly down';
+        return 'looking straight';
+      }
+      
+      // Get block the bot is standing on
+      const Vec3 = require('vec3');
+      const blockUnder = this.bot.blockAt(this.bot.entity.position.offset(0, -0.5, 0));
+      
       const state = {
-        position: this.bot.entity.position,
-        health: this.bot.health,
-        food: this.bot.food,
-        oxygen: this.bot.oxygenLevel,
-        yaw: this.bot.entity.yaw,
-        pitch: this.bot.entity.pitch,
-        onGround: this.bot.entity.onGround,
-        gameMode: this.bot.game.gameMode,
-        dimension: this.bot.game.dimension
+        position: {
+          x: this.bot.entity.position.x,
+          y: this.bot.entity.position.y,
+          z: this.bot.entity.position.z,
+          formatted: `X: ${Math.floor(this.bot.entity.position.x)}, Y: ${Math.floor(this.bot.entity.position.y)}, Z: ${Math.floor(this.bot.entity.position.z)}`
+        },
+        orientation: {
+          yaw: this.bot.entity.yaw,
+          pitch: this.bot.entity.pitch,
+          compass_direction: getCompassDirection(this.bot.entity.yaw),
+          pitch_description: getPitchDescription(this.bot.entity.pitch),
+          yaw_degrees: Math.round((this.bot.entity.yaw * 180 / Math.PI + 180) % 360),
+          pitch_degrees: Math.round(this.bot.entity.pitch * 180 / Math.PI),
+          description: `Facing ${getCompassDirection(this.bot.entity.yaw)}, ${getPitchDescription(this.bot.entity.pitch)}`
+        },
+        health: {
+          current: this.bot.health,
+          max: 20,
+          percentage: Math.round(this.bot.health / 20 * 100),
+          status: this.bot.health >= 15 ? 'Healthy' : this.bot.health >= 10 ? 'Moderate' : this.bot.health >= 5 ? 'Low' : 'Critical'
+        },
+        food: {
+          current: this.bot.food,
+          max: 20,
+          percentage: Math.round(this.bot.food / 20 * 100),
+          status: this.bot.food >= 18 ? 'Full' : this.bot.food >= 14 ? 'Satisfied' : this.bot.food >= 7 ? 'Hungry' : 'Starving'
+        },
+        oxygen: {
+          current: this.bot.oxygenLevel,
+          max: 20,
+          status: this.bot.oxygenLevel === 20 ? 'Full' : 'Depleting'
+        },
+        environment: {
+          on_ground: this.bot.entity.onGround,
+          block_under: blockUnder ? blockUnder.name : 'air',
+          game_mode: this.bot.game.gameMode,
+          dimension: this.bot.game.dimension,
+          is_raining: this.bot.isRaining,
+          time_of_day: this.bot.time.isDay ? 'Day' : 'Night',
+          light_level: this.bot.blockAt(this.bot.entity.position) ? this.bot.blockAt(this.bot.entity.position).light : 'unknown'
+        },
+        velocity: {
+          x: this.bot.entity.velocity.x,
+          y: this.bot.entity.velocity.y,
+          z: this.bot.entity.velocity.z,
+          speed: Math.sqrt(
+            this.bot.entity.velocity.x ** 2 + 
+            this.bot.entity.velocity.z ** 2
+          ).toFixed(3),
+          is_moving: Math.abs(this.bot.entity.velocity.x) > 0.01 || 
+                    Math.abs(this.bot.entity.velocity.z) > 0.01 ||
+                    Math.abs(this.bot.entity.velocity.y) > 0.01
+        }
       };
 
       res.json(state);
@@ -445,13 +515,79 @@ class MinecraftBotServer {
         return res.status(400).json({ error: 'Bot not connected' });
       }
 
-      const { yaw, pitch } = req.body;
+      const { yaw, pitch, relative, cardinal } = req.body;
       
-      if (yaw !== undefined && pitch !== undefined) {
+      // Handle relative turn
+      if (relative) {
+        const { yaw_delta, pitch_delta } = relative;
+        const currentYaw = this.bot.entity.yaw;
+        const currentPitch = this.bot.entity.pitch;
+        
+        // Convert degrees to radians and apply
+        const newYaw = currentYaw + (yaw_delta || 0) * Math.PI / 180;
+        const newPitch = Math.max(-Math.PI/2, Math.min(Math.PI/2, 
+          currentPitch + (pitch_delta || 0) * Math.PI / 180));
+        
+        this.bot.look(newYaw, newPitch, true);
+        res.json({ 
+          success: true,
+          turned: {
+            yaw_degrees: yaw_delta || 0,
+            pitch_degrees: pitch_delta || 0
+          },
+          new_orientation: {
+            yaw: newYaw,
+            pitch: newPitch,
+            yaw_degrees: Math.round((newYaw * 180 / Math.PI + 180) % 360),
+            pitch_degrees: Math.round(newPitch * 180 / Math.PI)
+          }
+        });
+      }
+      // Handle cardinal direction
+      else if (cardinal) {
+        let targetYaw;
+        switch(cardinal.toLowerCase()) {
+          case 'north':
+            targetYaw = Math.PI;  // Facing negative Z
+            break;
+          case 'south':
+            targetYaw = 0;  // Facing positive Z
+            break;
+          case 'east':
+            targetYaw = -Math.PI/2;  // Facing positive X
+            break;
+          case 'west':
+            targetYaw = Math.PI/2;  // Facing negative X
+            break;
+          default:
+            return res.status(400).json({ error: 'Invalid cardinal direction' });
+        }
+        
+        this.bot.look(targetYaw, 0, true);  // Look straight at horizon
+        res.json({ 
+          success: true,
+          direction: cardinal,
+          new_orientation: {
+            yaw: targetYaw,
+            pitch: 0,
+            yaw_degrees: Math.round((targetYaw * 180 / Math.PI + 180) % 360)
+          }
+        });
+      }
+      // Handle absolute look
+      else if (yaw !== undefined && pitch !== undefined) {
         this.bot.look(yaw, pitch, true);
-        res.json({ success: true });
+        res.json({ 
+          success: true,
+          new_orientation: {
+            yaw: yaw,
+            pitch: pitch,
+            yaw_degrees: Math.round((yaw * 180 / Math.PI + 180) % 360),
+            pitch_degrees: Math.round(pitch * 180 / Math.PI)
+          }
+        });
       } else {
-        res.status(400).json({ error: 'yaw and pitch required' });
+        res.status(400).json({ error: 'Provide yaw/pitch, relative turn, or cardinal direction' });
       }
     });
 
@@ -709,27 +845,150 @@ class MinecraftBotServer {
     const { type, params = {} } = instruction;
     
     switch (type) {
-      case 'move':
-        const { x, y, z, sprint } = params;
-        if (x !== undefined) this.bot.setControlState('forward', x > 0);
-        if (x !== undefined) this.bot.setControlState('back', x < 0);
-        if (z !== undefined) this.bot.setControlState('left', z < 0);
-        if (z !== undefined) this.bot.setControlState('right', z > 0);
-        if (y !== undefined && y > 0) this.bot.setControlState('jump', true);
-        if (sprint !== undefined) this.bot.setControlState('sprint', sprint);
-        return { moved: true };
+      case 'move': {
+        const { x, y, z, sprint, relative } = params;
+        
+        // Handle relative movement
+        if (relative) {
+          const { forward, backward, left, right, up, down } = relative;
+          const Vec3 = require('vec3');
+          
+          // Clear any existing movement states first
+          this.bot.clearControlStates();
+          
+          // Calculate target position based on bot's current orientation
+          let targetPosition = this.bot.entity.position.clone();
+          
+          // Get the bot's looking direction
+          const yaw = this.bot.entity.yaw;
+          
+          // Calculate movement vector based on yaw
+          if (forward > 0 || backward > 0) {
+            const distance = forward > 0 ? forward : -backward;
+            targetPosition.x += -Math.sin(yaw) * distance;
+            targetPosition.z += Math.cos(yaw) * distance;
+          }
+          
+          if (left > 0 || right > 0) {
+            const distance = right > 0 ? right : -left;
+            // Strafe perpendicular to looking direction
+            targetPosition.x += Math.cos(yaw) * distance;
+            targetPosition.z += Math.sin(yaw) * distance;
+          }
+          
+          if (up > 0 || down > 0) {
+            targetPosition.y += up > 0 ? up : -down;
+          }
+          
+          // Enable sprint if requested
+          if (sprint) this.bot.setControlState('sprint', true);
+          
+          // Try pathfinding for accurate movement
+          try {
+            await this.bot.pathfinder.goto(new require('mineflayer-pathfinder').goals.GoalNear(
+              targetPosition.x,
+              targetPosition.y,
+              targetPosition.z,
+              0
+            ));
+            return { 
+              moved: true, 
+              moved_to: {
+                x: Math.floor(targetPosition.x),
+                y: Math.floor(targetPosition.y),
+                z: Math.floor(targetPosition.z)
+              }
+            };
+          } catch (error) {
+            // Fallback to simple movement if pathfinding fails
+            const timeout = Math.max(1000, Math.abs(forward || backward || left || right || 0) * 250);
+            
+            // Set control states for movement
+            if (forward > 0) this.bot.setControlState('forward', true);
+            if (backward > 0) this.bot.setControlState('back', true);
+            if (left > 0) this.bot.setControlState('left', true);
+            if (right > 0) this.bot.setControlState('right', true);
+            if (up > 0) this.bot.setControlState('jump', true);
+            
+            // Wait for movement then stop
+            await new Promise(resolve => setTimeout(resolve, timeout));
+            this.bot.clearControlStates();
+            
+            return { 
+              moved: true, 
+              method: 'simple_movement',
+              duration_ms: timeout
+            };
+          }
+        } else {
+          // Original absolute movement
+          if (x !== undefined) this.bot.setControlState('forward', x > 0);
+          if (x !== undefined) this.bot.setControlState('back', x < 0);
+          if (z !== undefined) this.bot.setControlState('left', z < 0);
+          if (z !== undefined) this.bot.setControlState('right', z > 0);
+          if (y !== undefined && y > 0) this.bot.setControlState('jump', true);
+          if (sprint !== undefined) this.bot.setControlState('sprint', sprint);
+          return { moved: true };
+        }
+      }
         
       case 'stop':
         this.bot.clearControlStates();
         return { stopped: true };
         
-      case 'look':
-        const { yaw, pitch } = params;
-        if (yaw !== undefined && pitch !== undefined) {
+      case 'look': {
+        const { yaw, pitch, relative, cardinal } = params;
+        
+        // Handle relative turn
+        if (relative) {
+          const { yaw_delta, pitch_delta } = relative;
+          const currentYaw = this.bot.entity.yaw;
+          const currentPitch = this.bot.entity.pitch;
+          
+          // Convert degrees to radians and apply
+          const newYaw = currentYaw + (yaw_delta || 0) * Math.PI / 180;
+          const newPitch = Math.max(-Math.PI/2, Math.min(Math.PI/2, 
+            currentPitch + (pitch_delta || 0) * Math.PI / 180));
+          
+          this.bot.look(newYaw, newPitch, true);
+          return { 
+            looked: true,
+            turned: {
+              yaw_degrees: yaw_delta || 0,
+              pitch_degrees: pitch_delta || 0
+            }
+          };
+        }
+        // Handle cardinal direction
+        else if (cardinal) {
+          let targetYaw;
+          switch(cardinal.toLowerCase()) {
+            case 'north':
+              targetYaw = Math.PI;
+              break;
+            case 'south':
+              targetYaw = 0;
+              break;
+            case 'east':
+              targetYaw = -Math.PI/2;
+              break;
+            case 'west':
+              targetYaw = Math.PI/2;
+              break;
+            default:
+              throw new Error('Invalid cardinal direction');
+          }
+          
+          this.bot.look(targetYaw, 0, true);
+          return { looked: true, direction: cardinal };
+        }
+        // Handle absolute look
+        else if (yaw !== undefined && pitch !== undefined) {
           this.bot.look(yaw, pitch, true);
           return { looked: true };
         }
-        throw new Error('yaw and pitch required');
+        throw new Error('Provide yaw/pitch, relative turn, or cardinal direction');
+      }
         
       case 'chat':
         if (!params.message) throw new Error('message required');
