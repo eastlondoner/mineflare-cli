@@ -51,8 +51,47 @@ jobs:
         with:
           bun-version: '1.2'
 
+      - name: Update system dependencies (Ubuntu)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          # Install libraries for canvas and image processing
+          # These are needed to build the canvas module with proper native bindings
+          sudo apt-get install -y \
+            build-essential \
+            libcairo2-dev \
+            libpango1.0-dev \
+            libjpeg-dev \
+            libgif-dev \
+            librsvg2-dev \
+            libpixman-1-dev \
+            libjpeg-turbo8-dev \
+            libpng-dev
+          
+          # Show installed library versions for debugging
+          echo "Installed library versions:"
+          pkg-config --modversion cairo || echo "cairo not found"
+          pkg-config --modversion pango || echo "pango not found"
+
+      - name: Update system dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew update
+          brew install \
+            cairo \
+            pango \
+            libpng \
+            jpeg-turbo \
+            giflib \
+            librsvg \
+            pixman \
+            pkg-config
+
       - name: Install dependencies
-        run: bun install
+        run: |
+          # Clean install to ensure native modules are built with updated system libraries
+          rm -rf node_modules
+          bun install --force
 
       - name: Build executable
         run: |
