@@ -98,6 +98,11 @@ class SeededRandom {
   }
 }
 
+// Helper sleep function
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 module.exports = {
   ok,
   fail,

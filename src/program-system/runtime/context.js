@@ -1,6 +1,14 @@
 const { Vec3, BotState, ProgramError, ErrorCode } = require('../sdk/types');
 const OperationBudget = require('./budget');
 
+// Import new SDK utilities
+const flowUtils = require('../sdk/flow');
+const movementUtils = require('../sdk/movement');
+const safetyUtils = require('../sdk/safety');
+const watcherUtils = require('../sdk/watchers');
+const searchUtils = require('../sdk/search');
+const geometryUtils = require('../sdk/geometry');
+
 class ContextBuilder {
   constructor(botServer, capabilities, args, options = {}) {
     this.botServer = botServer;
@@ -25,7 +33,15 @@ class ContextBuilder {
       events: this.buildEventsAPI(),
       control: this.buildControlAPI(),
       log: this.buildLoggerAPI(),
-      clock: this.buildClockAPI()
+      clock: this.buildClockAPI(),
+      
+      // Add new SDK utilities
+      flow: this.buildFlowAPI(),
+      move: this.buildMovementAPI(),
+      safety: this.buildSafetyAPI(),
+      watch: this.buildWatcherAPI(),
+      search: this.buildSearchAPI(),
+      geometry: this.buildGeometryAPI()
     };
     
     return ctx;
@@ -488,6 +504,105 @@ class ContextBuilder {
       sleep: (ms) => {
         return new Promise(resolve => setTimeout(resolve, ms));
       }
+    };
+  }
+  
+  buildFlowAPI() {
+    // Bind flow utilities with context
+    return {
+      withTimeout: flowUtils.withTimeout,
+      retryBudget: flowUtils.retryBudget,
+      transaction: flowUtils.transaction,
+      parallel: flowUtils.parallel,
+      sleep: flowUtils.sleep
+    };
+  }
+  
+  buildMovementAPI() {
+    // Bind movement utilities with context
+    const self = this;
+    return {
+      step: (direction, options) => movementUtils.step(self.build(), direction, options),
+      moveCardinal: (direction, distance, options) => movementUtils.moveCardinal(self.build(), direction, distance, options),
+      followPath: (path, options) => movementUtils.followPath(self.build(), path, options),
+      strafe: (direction, distance, options) => movementUtils.strafe(self.build(), direction, distance, options),
+      jumpTo: (target, options) => movementUtils.jumpTo(self.build(), target, options),
+      circleAround: (center, radius, options) => movementUtils.circleAround(self.build(), center, radius, options)
+    };
+  }
+  
+  buildSafetyAPI() {
+    // Bind safety utilities with context
+    const self = this;
+    return {
+      escapeHole: (options) => safetyUtils.escapeHole(self.build(), options),
+      safeStep: (direction, options) => safetyUtils.safeStep(self.build(), direction, options),
+      createSafeZone: (center, options) => safetyUtils.createSafeZone(self.build(), center, options),
+      monitorVitals: (options) => safetyUtils.monitorVitals(self.build(), options),
+      retreatToSafety: (options) => safetyUtils.retreatToSafety(self.build(), options)
+    };
+  }
+  
+  buildWatcherAPI() {
+    // Bind watcher utilities with context
+    const self = this;
+    return {
+      until: watcherUtils.until,
+      blockAppears: (blockTypes, options) => watcherUtils.blockAppears(self.build(), blockTypes, options),
+      entityAppears: (entityType, options) => watcherUtils.entityAppears(self.build(), entityType, options),
+      inventoryContains: (requirements, options) => watcherUtils.inventoryContains(self.build(), requirements, options),
+      collectEvents: (eventName, options) => watcherUtils.collectEvents(self.build(), eventName, options),
+      watchValue: watcherUtils.watchValue
+    };
+  }
+  
+  buildSearchAPI() {
+    // Bind search utilities with context
+    const self = this;
+    return {
+      expandSquare: (options) => searchUtils.expandSquare(self.build(), options),
+      bug2: (goal, options) => searchUtils.bug2(self.build(), goal, options),
+      spiral: (options) => searchUtils.spiral(self.build(), options),
+      randomWalk: (options) => searchUtils.randomWalk(self.build(), options)
+    };
+  }
+  
+  buildGeometryAPI() {
+    // Export geometry utilities directly (they don't need context)
+    return {
+      // Sorting
+      nearestFirst: geometryUtils.nearestFirst,
+      
+      // Distance metrics
+      manhattan: geometryUtils.manhattan,
+      chebyshev: geometryUtils.chebyshev,
+      euclidean: geometryUtils.euclidean,
+      
+      // Vector operations
+      add: geometryUtils.add,
+      subtract: geometryUtils.subtract,
+      scale: geometryUtils.scale,
+      normalize: geometryUtils.normalize,
+      dot: geometryUtils.dot,
+      cross: geometryUtils.cross,
+      lerp: geometryUtils.lerp,
+      project: geometryUtils.project,
+      reflect: geometryUtils.reflect,
+      rotateY: geometryUtils.rotateY,
+      
+      // Bounds and regions
+      getBoundingBox: geometryUtils.getBoundingBox,
+      isWithinBounds: geometryUtils.isWithinBounds,
+      
+      // Shape generators
+      getLine: geometryUtils.getLine,
+      getCircle: geometryUtils.getCircle,
+      getDisc: geometryUtils.getDisc,
+      
+      // Utilities
+      clamp: geometryUtils.clamp,
+      round: geometryUtils.round,
+      floor: geometryUtils.floor
     };
   }
   
