@@ -6,7 +6,6 @@ const path = require('path');
 const fs = require('fs');
 const configManager = require('./config/ConfigManager');
 const Table = require('cli-table3');
-const chalk = require('chalk');
 
 const program = new Command();
 
@@ -61,9 +60,9 @@ serverCmd
     if (options.profile) {
       try {
         configManager.setActiveProfile(options.profile);
-        console.log(chalk.cyan(`Using profile: ${options.profile}`));
+        console.log(`Using profile: ${options.profile}`);
       } catch (error) {
-        console.error(chalk.red('Error:'), error.message);
+        console.error('Error:', error.message);
         process.exit(1);
       }
     }
@@ -100,12 +99,12 @@ serverCmd
       process.exit(0);
     } else {
       console.log('Starting bot server...');
-      console.log(chalk.cyan('Configuration:'));
-      console.log(`  Profile: ${chalk.green(configManager.getActiveProfile())}`);
-      console.log(`  Server: ${chalk.green(`http://localhost:${serverConfig.server.port}`)}`);
-      console.log(`  Minecraft: ${chalk.green(`${serverConfig.minecraft.host}:${serverConfig.minecraft.port}`)}`);
-      console.log(`  Username: ${chalk.green(serverConfig.minecraft.username)}`);
-      console.log(`  Viewer: ${chalk.green(serverConfig.viewer.enabled ? `http://localhost:${serverConfig.viewer.port}` : 'disabled')}`);
+      console.log('Configuration:');
+      console.log(`  Profile: ${configManager.getActiveProfile()}`);
+      console.log(`  Server: http://localhost:${serverConfig.server.port}`);
+      console.log(`  Minecraft: ${serverConfig.minecraft.host}:${serverConfig.minecraft.port}`);
+      console.log(`  Username: ${serverConfig.minecraft.username}`);
+      console.log(`  Viewer: ${serverConfig.viewer.enabled ? `http://localhost:${serverConfig.viewer.port}` : 'disabled'}`);
       require('./server');
     }
   });
@@ -177,14 +176,14 @@ configCmd
       if (options.json) {
         console.log(JSON.stringify(value, null, 2));
       } else if (path) {
-        console.log(`${chalk.cyan(path)}: ${chalk.green(JSON.stringify(value))}`);
+        console.log(`${path}: ${JSON.stringify(value)}`);
       } else {
         const schema = configManager.getSchema();
-        console.log(chalk.bold(`\nConfiguration (Profile: ${chalk.yellow(options.profile || configManager.getActiveProfile())})\n`));
+        console.log(`\nConfiguration (Profile: ${options.profile || configManager.getActiveProfile()})\n`);
         console.log(displayConfigTable(value, schema));
       }
     } catch (error) {
-      console.error(chalk.red('Error:'), error.message);
+      console.error('Error:', error.message);
       process.exit(1);
     }
   });
@@ -204,9 +203,9 @@ configCmd
       }
       
       configManager.set(path, parsedValue, options.profile);
-      console.log(chalk.green('✓'), `Set ${chalk.cyan(path)} to ${chalk.green(JSON.stringify(parsedValue))}`);
+      console.log('✓', `Set ${path} to ${JSON.stringify(parsedValue)}`);
     } catch (error) {
-      console.error(chalk.red('Error:'), error.message);
+      console.error('Error:', error.message);
       process.exit(1);
     }
   });
@@ -221,48 +220,48 @@ configCmd
         case 'list':
           const profiles = configManager.listProfiles();
           const active = configManager.getActiveProfile();
-          console.log(chalk.bold('\nAvailable Profiles:\n'));
+          console.log('\nAvailable Profiles:\n');
           profiles.forEach(profile => {
-            const marker = profile === active ? chalk.green('* ') : '  ';
-            console.log(marker + chalk.cyan(profile));
+            const marker = profile === active ? '* ' : '  ';
+            console.log(marker + profile);
           });
           console.log();
           break;
           
         case 'switch':
           if (!name) {
-            console.error(chalk.red('Error:'), 'Profile name required');
+            console.error('Error:', 'Profile name required');
             process.exit(1);
           }
           configManager.setActiveProfile(name);
-          console.log(chalk.green('✓'), `Switched to profile: ${chalk.cyan(name)}`);
+          console.log('✓', `Switched to profile: ${name}`);
           break;
           
         case 'create':
           if (!name) {
-            console.error(chalk.red('Error:'), 'Profile name required');
+            console.error('Error:', 'Profile name required');
             process.exit(1);
           }
           configManager.createProfile(name, options.base);
-          console.log(chalk.green('✓'), `Created profile: ${chalk.cyan(name)}`);
+          console.log('✓', `Created profile: ${name}`);
           break;
           
         case 'delete':
           if (!name) {
-            console.error(chalk.red('Error:'), 'Profile name required');
+            console.error('Error:', 'Profile name required');
             process.exit(1);
           }
           configManager.deleteProfile(name);
-          console.log(chalk.green('✓'), `Deleted profile: ${chalk.cyan(name)}`);
+          console.log('✓', `Deleted profile: ${name}`);
           break;
           
         default:
-          console.error(chalk.red('Error:'), `Unknown action: ${action}`);
+          console.error('Error:', `Unknown action: ${action}`);
           console.log('Valid actions: list, switch, create, delete');
           process.exit(1);
       }
     } catch (error) {
-      console.error(chalk.red('Error:'), error.message);
+      console.error('Error:', error.message);
       process.exit(1);
     }
   });
@@ -274,9 +273,9 @@ configCmd
   .action((options) => {
     try {
       configManager.reset(options.profile);
-      console.log(chalk.green('✓'), 'Configuration reset to defaults');
+      console.log('✓', 'Configuration reset to defaults');
     } catch (error) {
-      console.error(chalk.red('Error:'), error.message);
+      console.error('Error:', error.message);
       process.exit(1);
     }
   });
@@ -292,12 +291,12 @@ configCmd
       
       if (file) {
         fs.writeFileSync(file, json);
-        console.log(chalk.green('✓'), `Configuration exported to: ${chalk.cyan(file)}`);
+        console.log('✓', `Configuration exported to: ${file}`);
       } else {
         console.log(json);
       }
     } catch (error) {
-      console.error(chalk.red('Error:'), error.message);
+      console.error('Error:', error.message);
       process.exit(1);
     }
   });
@@ -312,9 +311,9 @@ configCmd
       const importConfig = JSON.parse(json);
       
       configManager.importConfig(importConfig, options.profile);
-      console.log(chalk.green('✓'), `Configuration imported from: ${chalk.cyan(file)}`);
+      console.log('✓', `Configuration imported from: ${file}`);
     } catch (error) {
-      console.error(chalk.red('Error:'), error.message);
+      console.error('Error:', error.message);
       process.exit(1);
     }
   });
