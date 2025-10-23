@@ -35,11 +35,12 @@ Once you push a tag starting with `v`, GitHub Actions will:
 
 1. **Build executables** for supported platforms:
    - Linux x64 (modern and baseline)
-   - Linux ARM64/AArch64
+   - Linux ARM64/AArch64 (cross-compiled)
    - macOS ARM64 (Apple Silicon)
    - macOS x64 (Intel)
 
 2. **Test each executable** to ensure it works
+   - Note: Linux ARM64 binaries are cross-compiled and cannot be tested on GitHub's x64 runners
 
 3. **Create compressed archives** with checksums
 

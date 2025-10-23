@@ -65,10 +65,18 @@ jobs:
             --outfile ${{ matrix.output }}
 
       - name: Test executable (Unix)
-        if: runner.os != 'Windows'
+        if: runner.os != 'Windows' && matrix.name != 'linux-arm64'
         run: |
           ./${{ matrix.output }} --version
           ./${{ matrix.output }} --help
+      
+      - name: Skip test for cross-compiled ARM64
+        if: matrix.name == 'linux-arm64'
+        run: |
+          echo "Skipping test for cross-compiled ARM64 binary"
+          echo "Binary will be tested on ARM64 hardware after release"
+          file ${{ matrix.output }}
+          ls -lh ${{ matrix.output }}
 
       - name: Test executable (Windows)
         if: runner.os == 'Windows'
