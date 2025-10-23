@@ -100,6 +100,9 @@ Environment variables (see `.env.example`):
   - Environment variable override support for backward compatibility
   - Import/export functionality for configuration sharing
   - Persistent configuration storage in .mineflare/config.json
+- 2025-10-23: Added Linux ARM64 build support to GitHub Actions release workflow
+  - Builds native ARM64 binaries for AWS Graviton, Raspberry Pi 4+, and other ARM servers
+  - Uses GitHub's new free ARM64 runners (ubuntu-24.04-arm) for native compilation and testing
 
 ## User Preferences
 None specified yet.
