@@ -12,7 +12,7 @@ The configuration is organized into sections:
 
 ### Minecraft Configuration
 - `minecraft.host` - Minecraft server hostname (default: 'localhost')
-- `minecraft.port` - Minecraft server port (default: 8099)
+- `minecraft.port` - Minecraft server port (default: 25565)
 - `minecraft.username` - Bot username (default: 'AIBot')
 - `minecraft.version` - Minecraft version (default: '1.21.8')
 - `minecraft.auth` - Authentication type: 'offline', 'microsoft', or 'mojang' (default: 'offline')

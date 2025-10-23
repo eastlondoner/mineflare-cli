@@ -16,7 +16,7 @@ class ConfigManager {
       },
       minecraft: {
         host: { type: 'string', default: 'localhost', description: 'Minecraft server hostname' },
-        port: { type: 'number', default: 8099, min: 1, max: 65535, description: 'Minecraft server port' },
+        port: { type: 'number', default: 25565, min: 1, max: 65535, description: 'Minecraft server port' },
         username: { type: 'string', default: 'AIBot', description: 'Bot username' },
         version: { type: 'string', default: '1.21.8', description: 'Minecraft version' },
         auth: { type: 'string', default: 'offline', enum: ['offline', 'microsoft', 'mojang'], description: 'Authentication type' },

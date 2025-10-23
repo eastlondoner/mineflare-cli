@@ -36,4 +36,4 @@ When cloning the repository, you'll need to:
 
 ## Default Configuration
 
-The server runs on port 8099 with offline mode enabled for bot testing.
+The server runs on port 25565 with offline mode enabled for bot testing.

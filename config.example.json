@@ -5,7 +5,7 @@
   },
   "minecraft": {
     "host": "localhost",
-    "port": 8099,
+    "port": 25565,
     "username": "AIBot",
     "version": "1.21.8",
     "auth": "offline",

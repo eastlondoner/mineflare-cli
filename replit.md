@@ -14,7 +14,7 @@ Allows AI agents to control a Minecraft bot through a REST API. The bot can move
 - **Bot Framework**: Mineflayer 4.33.0
 - **HTTP Server**: Express 5.1.0
 - **Viewer**: Prismarine-viewer 1.33.0
-- **Minecraft Server**: Paper 1.21.8 (running on port 8099)
+- **Minecraft Server**: Paper 1.21.8 (running on port 25565)
 
 ## Architecture
 
@@ -90,7 +90,7 @@ Environment variables (see `.env.example`):
 
 ### End-to-End Testing Framework
 The project includes a comprehensive E2E testing framework with **zero mocks**:
-- Real Minecraft Paper 1.21.8 server running on port 8099 for testing
+- Real Minecraft Paper 1.21.8 server running on port 25565 for testing
 - All tests connect to actual servers with real network connections
 - No mocks or fakes - validates actual system behavior
 - Test categories: server lifecycle, bot connections, API endpoints, and more
@@ -98,14 +98,14 @@ The project includes a comprehensive E2E testing framework with **zero mocks**:
 
 ### Test Minecraft Server
 - **Type**: Paper 1.21.8
-- **Port**: 8099 (dedicated test port)
+- **Port**: 25565 (dedicated test port)
 - **Mode**: Offline mode enabled for bot testing
 - **Location**: `minecraft-server/` directory
 - **Purpose**: Enables real end-to-end testing without mocks
 
 ## Recent Changes
 - 2025-10-23: Initial implementation with Bun 1.2, Mineflayer, event logging, API endpoints, screenshot support, and CLI client
-- 2025-10-23: Added Minecraft Paper 1.21.8 server running on port 8099
+- 2025-10-23: Added Minecraft Paper 1.21.8 server running on port 25565
 - 2025-10-23: Implemented crafting system with recipes and equipment management
 - 2025-10-23: Added batch job system for executing sequences of instructions
 - 2025-10-23: Created single `mineflare` executable combining server daemon and CLI functionality
@@ -121,7 +121,7 @@ The project includes a comprehensive E2E testing framework with **zero mocks**:
   - Builds native ARM64 binaries for AWS Graviton, Raspberry Pi 4+, and other ARM servers
   - Uses GitHub's new free ARM64 runners (ubuntu-24.04-arm) for native compilation and testing
 - 2025-10-23: Implemented comprehensive E2E testing framework with zero mocks
-  - All tests use real Minecraft server connections (Paper 1.21.8 on port 8099)
+  - All tests use real Minecraft server connections (Paper 1.21.8 on port 25565)
   - Real network connections, real process spawning, real HTTP requests
   - Test utilities for managing real server processes and bot connections
   - Validates production-like behavior without any mocking

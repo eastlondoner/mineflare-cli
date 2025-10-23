@@ -44,7 +44,7 @@ outputType = "console"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "cd minecraft-server && java -Xmx1024M -Xms1024M -jar paper-1.21.8.jar nogui"
-waitForPort = 8099
+waitForPort = 25565
 
 [[ports]]
 localPort = 3000
@@ -107,5 +107,5 @@ localPort = 3202
 externalPort = 9000
 
 [[ports]]
-localPort = 8099
-externalPort = 8099
+localPort = 25565
+externalPort = 25565

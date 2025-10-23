@@ -4,7 +4,7 @@
 
 This E2E testing framework operates on the principle of **absolute realism**. Unlike unit tests that mock dependencies, these tests interact with real services, real servers, and real systems to validate that our application works in production-like conditions.
 
-**Current Status**: The framework is operational with a real Minecraft Paper 1.21.8 server running on port 8099. Basic connectivity tests are passing and demonstrating real TCP connections to the actual Minecraft server.
+**Current Status**: The framework is operational with a real Minecraft Paper 1.21.8 server running on port 25565. Basic connectivity tests are passing and demonstrating real TCP connections to the actual Minecraft server.
 
 ### Core Principles
 
@@ -117,7 +117,7 @@ This E2E testing framework operates on the principle of **absolute realism**. Un
 1. **Test Minecraft Server**: Paper 1.21.8 server included in `minecraft-server/` directory
 2. **Network Access**: Tests require network connectivity
 3. **File System Access**: Tests create and modify real files
-4. **Port Availability**: Port 8099 for Minecraft server, ports 3000-3010 for test servers
+4. **Port Availability**: Port 25565 for Minecraft server, ports 3000-3010 for test servers
 5. **Sufficient Resources**: CPU and memory for running server + bot + tests
 
 ### Current Test Server
@@ -126,7 +126,7 @@ The project includes a **real Minecraft Paper 1.21.8 server** for testing:
 
 ```bash
 # The test server is already configured in minecraft-server/ directory
-# It runs on port 8099 to avoid conflicts
+# It runs on port 25565 to avoid conflicts
 # Offline mode is enabled for easy bot testing
 
 # To start manually:
@@ -141,7 +141,7 @@ The test environment can be configured via environment variables:
 ```bash
 # Minecraft test server configuration (defaults for included server)
 E2E_MC_HOST=localhost          # Minecraft server host
-E2E_MC_PORT=8099               # Minecraft server port (using 8099)
+E2E_MC_PORT=25565               # Minecraft server port (using 25565)
 E2E_MC_VERSION=1.21.8          # Minecraft version
 E2E_MC_OFFLINE=true            # Use offline mode for testing
 
@@ -176,7 +176,7 @@ bun test test/e2e/simple-connection.test.js
 bun test test/e2e/*.test.js
 
 # Run with environment variables for the test server
-E2E_MC_HOST=localhost E2E_MC_PORT=8099 bun test test/e2e/*.test.js
+E2E_MC_HOST=localhost E2E_MC_PORT=25565 bun test test/e2e/*.test.js
 ```
 
 ### Specific Test Files
@@ -309,12 +309,12 @@ E2E tests track and validate performance metrics:
 
 1. **Test Minecraft Server Not Available**
    - Ensure server is running: `cd minecraft-server && java -jar paper-1.21.8.jar nogui`
-   - Check connectivity: `nc -zv localhost 8099`
+   - Check connectivity: `nc -zv localhost 25565`
    - Verify server logs in minecraft-server/logs/
 
 2. **Port Conflicts**
-   - Test server uses port 8099 (not standard 25565)
-   - Check for processes using test ports: `lsof -i :8099` and `lsof -i :3000-3010`
+   - Test server uses port 25565 (not standard 25565)
+   - Check for processes using test ports: `lsof -i :25565` and `lsof -i :3000-3010`
    - Kill conflicting processes or adjust ports
 
 3. **Version Mismatch Errors**

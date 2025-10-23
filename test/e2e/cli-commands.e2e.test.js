@@ -12,7 +12,7 @@ const net = require('net');
 
 // Test configuration
 const SERVER_PORT = process.env.E2E_SERVER_PORT || 3001;
-const MC_PORT = process.env.E2E_MC_PORT || 8099;
+const MC_PORT = process.env.E2E_MC_PORT || 25565;
 const API_URL = `http://localhost:${SERVER_PORT}`;
 const MINEFLARE_PATH = path.join(process.cwd(), 'src', 'mineflare.js');
 const TIMEOUT = parseInt(process.env.E2E_TIMEOUT) || 30000;

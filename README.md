@@ -236,7 +236,7 @@ The system consists of two main components:
 The project includes a comprehensive end-to-end testing framework with **zero mocks**. All tests connect to real servers and validate actual system behavior.
 
 ### Test Infrastructure
-- **Real Minecraft Server**: Paper 1.21.8 server running on port 8099 for testing
+- **Real Minecraft Server**: Paper 1.21.8 server running on port 25565 for testing
 - **Zero Mocks Philosophy**: No fake implementations - all tests use real connections
 - **Test Categories**: Server lifecycle, bot connections, API endpoints, and more
 
@@ -252,7 +252,7 @@ bun test test/e2e/server-lifecycle.e2e.test.js  # Server management tests
 bun test test/e2e/bot-connection.e2e.test.js    # Bot connection tests
 
 # Run with custom Minecraft server
-E2E_MC_HOST=localhost E2E_MC_PORT=8099 bun test test/e2e/*.test.js
+E2E_MC_HOST=localhost E2E_MC_PORT=25565 bun test test/e2e/*.test.js
 ```
 
 ### Test Minecraft Server
@@ -266,7 +266,7 @@ java -Xmx1024M -Xms1024M -jar paper-1.21.8.jar nogui
 ```
 
 The test server is configured with:
-- **Port**: 8099 (non-standard to avoid conflicts)
+- **Port**: 25565
 - **Mode**: Offline mode for easy bot testing
 - **Version**: Paper 1.21.8
 

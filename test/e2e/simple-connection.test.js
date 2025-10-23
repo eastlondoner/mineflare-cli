@@ -7,11 +7,11 @@ const { describe, it, expect } = require('bun:test');
 const net = require('net');
 
 describe('E2E: Simple Real Server Verification', () => {
-  const MC_PORT = 8099;
+  const MC_PORT = 25565;
   
   console.log('═'.repeat(60));
   console.log('REAL END-TO-END TEST - NO MOCKS!');
-  console.log('Testing actual Minecraft server on port 8099');
+  console.log('Testing actual Minecraft server on port 25565');
   console.log('═'.repeat(60));
   
   it('should verify the Minecraft server port is open and accepting connections', async () => {

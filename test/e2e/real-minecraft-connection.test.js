@@ -9,7 +9,7 @@ const mineflayer = require('mineflayer');
 
 describe('E2E: Real Minecraft Server Connection', () => {
   const MC_HOST = process.env.E2E_MC_HOST || 'localhost';
-  const MC_PORT = parseInt(process.env.E2E_MC_PORT) || 8099;
+  const MC_PORT = parseInt(process.env.E2E_MC_PORT) || 25565;
   
   console.log(`🎮 Testing with REAL Minecraft server at ${MC_HOST}:${MC_PORT}`);
   console.log('This is a real end-to-end test with zero mocks!');

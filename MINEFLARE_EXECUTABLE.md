@@ -40,7 +40,7 @@ The executable will be ~326MB and includes the entire Bun runtime.
 ./mineflare server start \
   --port 3000 \
   --mc-host localhost \
-  --mc-port 8099 \
+  --mc-port 25565 \
   --mc-username MyBot \
   --mc-version 1.21.8
 ```
@@ -190,7 +190,7 @@ When running, the executable may create:
 
 ### Server won't start
 - Check if port 3000 is already in use
-- Verify Minecraft server is running on port 8099
+- Verify Minecraft server is running on port 25565
 - Check for stale PID file: `rm mineflare.pid`
 
 ### Daemon won't stop
