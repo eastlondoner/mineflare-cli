@@ -20,6 +20,7 @@
     "test:ci": "bun test --coverage --bail",
     "build": "bun build --compile --minify --sourcemap ./src/mineflare.js --outfile mineflare",
     "build:linux": "bun build --compile --minify --sourcemap --target=bun-linux-x64 ./src/mineflare.js --outfile mineflare-linux",
+    "build:linux-arm64": "bun build --compile --minify --sourcemap --target=bun-linux-arm64 ./src/mineflare.js --outfile mineflare-linux-arm64",
     "build:windows": "bun build --compile --minify --sourcemap --target=bun-windows-x64 ./src/mineflare.js --outfile mineflare.exe",
     "build:mac": "bun build --compile --minify --sourcemap --target=bun-darwin-arm64 ./src/mineflare.js --outfile mineflare-mac",
     "release:patch": "npm version patch && git push && git push --tags",

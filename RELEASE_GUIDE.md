@@ -35,6 +35,7 @@ Once you push a tag starting with `v`, GitHub Actions will:
 
 1. **Build executables** for supported platforms:
    - Linux x64 (modern and baseline)
+   - Linux ARM64/AArch64
    - macOS ARM64 (Apple Silicon)
    - macOS x64 (Intel)
 
@@ -105,6 +106,7 @@ Pre-release tags are automatically marked as pre-releases on GitHub.
 ### Linux
 - **Modern (x64)**: For CPUs from 2013+ with AVX2 support
 - **Baseline (x64-baseline)**: For older CPUs without AVX2
+- **ARM64/AArch64**: For ARM-based systems (AWS Graviton, Raspberry Pi 4+, ARM servers)
 
 ### macOS
 - **ARM64**: For Apple Silicon Macs (M1, M2, M3)
