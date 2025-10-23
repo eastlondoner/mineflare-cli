@@ -28,7 +28,6 @@ module.exports = {
   ok,
   fail,
   defineProgram,
-  sleep,
   
   // Types and classes
   Vec3,

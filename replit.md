@@ -73,6 +73,33 @@ All bot events are logged with timestamps:
 - spawn, death, kicked, error
 - chat messages
 - health changes
+
+### User Program System
+Mineflare now supports running user-submitted JavaScript programs in a secure, sandboxed environment:
+
+#### Features
+- **Secure VM Sandbox**: Programs run in isolated VM contexts using Bun's vm module
+- **Capability-Based Security**: Programs must declare capabilities (move, dig, craft, etc.)
+- **Deterministic Execution**: Optional deterministic mode for reproducible results
+- **Resource Limits**: Rate limiting and operation budgets prevent abuse
+- **Program Management**: Register, list, run, and remove named programs
+
+#### Program Commands
+- `mineflare program exec <file>` - Execute a program file immediately
+- `mineflare program add <file> --name <name>` - Register a named program
+- `mineflare program run <name>` - Run a registered program
+- `mineflare program ls` - List all registered programs
+- `mineflare program rm <name>` - Remove a program
+- `mineflare program cancel <runId>` - Cancel a running program
+- `mineflare program status <runId>` - Get program execution status
+- `mineflare program history` - View execution history
+
+#### SDK API
+Programs use the Mineflare SDK to interact with the bot:
+- **Context Object**: Provides args, bot state, world queries, actions, events, logging
+- **Actions API**: Wrapped bot commands (navigate, gather, craft, inventory)
+- **Deterministic Search**: Expanding square pattern for exploration
+- **Result Helpers**: `ok()` and `fail()` for functional error handling
 - entity spawns
 - hurt events
 

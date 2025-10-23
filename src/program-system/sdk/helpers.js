@@ -22,14 +22,6 @@ function defineProgram(spec) {
   return spec;
 }
 
-// Sleep helper that uses controlled clock
-function sleep(ms) {
-  return new Promise(resolve => {
-    // This will be replaced with controlled timing in sandbox
-    setTimeout(resolve, ms);
-  });
-}
-
 // Helper to parse command line arguments
 function parseArgs(argArray) {
   const args = {};

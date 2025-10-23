@@ -213,6 +213,37 @@ class ProgramSandbox {
   injectSDK() {
     // Inject the SDK helpers into the sandbox
     const sdkCode = `
+      // Create a controlled timer system
+      globalThis.__timers = {
+        callbacks: new Map(),
+        nextId: 1,
+        
+        setTimeout: function(callback, delay) {
+          const id = this.nextId++;
+          this.callbacks.set(id, {
+            callback,
+            delay,
+            type: 'timeout',
+            time: Date.now() + delay
+          });
+          
+          // Request host to handle the timer
+          if (globalThis.__handleTimer) {
+            globalThis.__handleTimer(id, delay, 'timeout');
+          }
+          
+          return id;
+        },
+        
+        clearTimeout: function(id) {
+          this.callbacks.delete(id);
+        }
+      };
+      
+      // Provide controlled setTimeout for SDK use
+      globalThis.setTimeout = globalThis.__timers.setTimeout.bind(globalThis.__timers);
+      globalThis.clearTimeout = globalThis.__timers.clearTimeout.bind(globalThis.__timers);
+      
       globalThis.mineflareSDK = {
         ok: (value) => ({ ok: true, value }),
         fail: (error) => ({ ok: false, error }),
@@ -244,14 +275,39 @@ class ProgramSandbox {
             const dz = other.z - this.z;
             return Math.sqrt(dx * dx + dy * dy + dz * dz);
           }
+        },
+        sleep: (ms) => {
+          return new Promise(resolve => setTimeout(resolve, ms));
         }
       };
       
       // Make SDK available globally
-      const { ok, fail, defineProgram, Vec3 } = globalThis.mineflareSDK;
+      const { ok, fail, defineProgram, Vec3, sleep } = globalThis.mineflareSDK;
     `;
     
     vm.runInContext(sdkCode, this.context);
+    
+    // Set up timer handler on the host side
+    this.contextObject.__handleTimer = (id, delay, type) => {
+      // Use real setTimeout on host side, but execute callback in sandbox
+      setTimeout(() => {
+        try {
+          const timerCode = `
+            const timer = globalThis.__timers.callbacks.get(${id});
+            if (timer && timer.type === '${type}') {
+              globalThis.__timers.callbacks.delete(${id});
+              const callback = timer.callback;
+              if (typeof callback === 'function') {
+                callback();
+              }
+            }
+          `;
+          vm.runInContext(timerCode, this.context);
+        } catch (error) {
+          console.error('Timer execution error:', error);
+        }
+      }, delay);
+    };
   }
   
   injectContext(programContext) {
