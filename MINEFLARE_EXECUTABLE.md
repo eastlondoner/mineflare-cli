@@ -155,7 +155,7 @@ When running with `--daemon`:
 The executable respects these environment variables:
 
 - `API_BASE` - API endpoint (default: http://localhost:3000)
-- `SERVER_PORT` - Server port when starting
+- `MINEFLARE_SERVER_PORT` - Server port when starting
 - `MC_HOST` - Minecraft server host
 - `MC_PORT` - Minecraft server port
 - `MC_USERNAME` - Bot username

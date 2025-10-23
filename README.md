@@ -212,7 +212,7 @@ Environment variables still work and override configuration file settings:
 - `MC_VERSION` - Minecraft version or false for auto-detect
 - `MC_AUTH` - Authentication type: offline or microsoft
 - `ENABLE_VIEWER` - Enable viewer for screenshots (default: true)
-- `SERVER_PORT` - HTTP API server port (default: 3000)
+- `MINEFLARE_SERVER_PORT` - HTTP API server port (default: 3000)
 
 See [CONFIGURATION.md](CONFIGURATION.md) for complete configuration documentation.
 

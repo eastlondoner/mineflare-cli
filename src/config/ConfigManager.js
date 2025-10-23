@@ -151,7 +151,7 @@ class ConfigManager {
       'MC_USERNAME': 'minecraft.username',
       'MC_VERSION': 'minecraft.version',
       'MC_AUTH': 'minecraft.auth',
-      'SERVER_PORT': 'server.port',
+      'MINEFLARE_SERVER_PORT': 'server.port',
       'API_BASE': 'api.baseUrl',
       'ENABLE_VIEWER': 'viewer.enabled',
       'VIEWER_PORT': 'viewer.port',

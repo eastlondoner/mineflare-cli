@@ -69,7 +69,7 @@ serverCmd
     
     // Get configuration and set environment variables for backward compatibility
     const serverConfig = configManager.get();
-    process.env.SERVER_PORT = serverConfig.server.port;
+    process.env.MINEFLARE_SERVER_PORT = serverConfig.server.port;
     process.env.MC_HOST = serverConfig.minecraft.host;
     process.env.MC_PORT = serverConfig.minecraft.port;
     process.env.MC_USERNAME = serverConfig.minecraft.username;

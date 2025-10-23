@@ -84,7 +84,7 @@ Environment variables (see `.env.example`):
 - `MC_VERSION` - Minecraft version (or false for auto)
 - `MC_AUTH` - Authentication type (offline/microsoft)
 - `ENABLE_VIEWER` - Enable viewer for screenshots
-- `SERVER_PORT` - HTTP server port
+- `MINEFLARE_SERVER_PORT` - HTTP server port
 
 ## Testing Infrastructure
 

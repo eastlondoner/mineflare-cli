@@ -124,7 +124,7 @@ Environment variables still override configuration file settings. The following 
 - `MC_USERNAME` - Overrides minecraft.username
 - `MC_VERSION` - Overrides minecraft.version
 - `MC_AUTH` - Overrides minecraft.auth
-- `SERVER_PORT` - Overrides server.port
+- `MINEFLARE_SERVER_PORT` - Overrides server.port
 - `API_BASE` - Overrides api.baseUrl
 - `ENABLE_VIEWER` - Overrides viewer.enabled
 - `VIEWER_PORT` - Overrides viewer.port
