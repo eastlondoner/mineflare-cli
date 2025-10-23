@@ -1,7 +1,5 @@
 const mineflayer = require('mineflayer');
 const express = require('express');
-const { mineflayer: mineflayerViewer } = require('prismarine-viewer');
-const { createCanvas } = require('canvas');
 
 class MinecraftBotServer {
   constructor() {
@@ -33,14 +31,21 @@ class MinecraftBotServer {
       auth: config.auth || 'offline'
     });
 
-    this.bot.once('spawn', () => {
+    this.bot.once('spawn', async () => {
       this.logEvent('spawn', { position: this.bot.entity.position });
       
       if (config.enableViewer !== false) {
-        const viewerPort = config.viewerPort || 3001;
-        const firstPerson = config.firstPerson !== undefined ? config.firstPerson : true;
-        this.viewer = mineflayerViewer(this.bot, { port: viewerPort, firstPerson });
-        console.log(`Viewer started on port ${viewerPort}`);
+        try {
+          // Dynamically import prismarine-viewer only when needed
+          const { mineflayer: mineflayerViewer } = await import('prismarine-viewer');
+          const viewerPort = config.viewerPort || 3001;
+          const firstPerson = config.firstPerson !== undefined ? config.firstPerson : true;
+          this.viewer = mineflayerViewer(this.bot, { port: viewerPort, firstPerson });
+          console.log(`Viewer started on port ${viewerPort}`);
+        } catch (error) {
+          console.error('Failed to load viewer (missing native library dependencies):', error.message);
+          console.log('Continuing without viewer support.');
+        }
       }
     });
 
@@ -598,6 +603,15 @@ class MinecraftBotServer {
   async captureScreenshot() {
     if (!this.bot) {
       throw new Error('Bot not connected');
+    }
+
+    // Dynamically import canvas only when screenshot is requested
+    let createCanvas;
+    try {
+      const canvasModule = await import('canvas');
+      createCanvas = canvasModule.createCanvas;
+    } catch (error) {
+      throw new Error('Canvas module not available (missing native library dependencies): ' + error.message);
     }
 
     const width = 800;

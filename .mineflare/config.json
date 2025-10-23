@@ -8,14 +8,14 @@
       },
       "minecraft": {
         "host": "localhost",
-        "port": 25565,
+        "port": 8099,
         "username": "ConfigBot",
         "version": "1.21.8",
         "auth": "offline",
         "viewDistance": "normal"
       },
       "viewer": {
-        "enabled": true,
+        "enabled": false,
         "port": 3007,
         "firstPerson": false
       },
@@ -39,14 +39,14 @@
       },
       "minecraft": {
         "host": "localhost",
-        "port": 25565,
+        "port": 8099,
         "username": "AIBot",
         "version": "1.21.8",
         "auth": "offline",
         "viewDistance": "normal"
       },
       "viewer": {
-        "enabled": true,
+        "enabled": false,
         "port": 3007,
         "firstPerson": false
       },
@@ -70,14 +70,14 @@
       },
       "minecraft": {
         "host": "localhost",
-        "port": 25565,
+        "port": 8099,
         "username": "AIBot",
         "version": "1.21.8",
         "auth": "offline",
         "viewDistance": "normal"
       },
       "viewer": {
-        "enabled": true,
+        "enabled": false,
         "port": 3007,
         "firstPerson": false
       },
