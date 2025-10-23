@@ -650,4 +650,305 @@ program
     }
   });
 
+// Program commands for user-submitted JavaScript/TypeScript programs
+const programCmd = program
+  .command('program')
+  .description('Manage and run user programs');
+
+// Helper to parse key=value arguments
+function parseArgs(argArray) {
+  const args = {};
+  if (!argArray) return args;
+  
+  for (const arg of argArray) {
+    const [key, ...valueParts] = arg.split('=');
+    const value = valueParts.join('='); // Handle values with = in them
+    
+    if (key && value !== undefined) {
+      // Try to parse as JSON first (for objects/arrays)
+      try {
+        args[key] = JSON.parse(value);
+      } catch {
+        // Parse as boolean if applicable
+        if (value === 'true') args[key] = true;
+        else if (value === 'false') args[key] = false;
+        // Parse as number if applicable
+        else if (!isNaN(value)) args[key] = Number(value);
+        // Otherwise keep as string
+        else args[key] = value;
+      }
+    }
+  }
+  
+  return args;
+}
+
+// Collector function for multiple --arg options
+function collect(val, memo) {
+  memo.push(val);
+  return memo;
+}
+
+programCmd
+  .command('exec <file>')
+  .description('Execute a program file immediately')
+  .option('--profile <name>', 'Configuration profile to use')
+  .option('--timeout <ms>', 'Execution timeout in milliseconds', '900000')
+  .option('--cap <capabilities>', 'Comma-separated list of capabilities', 'move,dig,place,look,inventory,craft')
+  .option('--arg <key=value>', 'Program arguments (can be used multiple times)', collect, [])
+  .option('--dry-run', 'Simulate execution without connecting to server')
+  .option('--world-snapshot <file>', 'World snapshot file for dry-run mode')
+  .option('--seed <number>', 'Random seed for deterministic execution', '1')
+  .action(async (file, options) => {
+    try {
+      // Load program source
+      const source = fs.readFileSync(file, 'utf8');
+      const args = parseArgs(options.arg);
+      const capabilities = options.cap.split(',').map(c => c.trim());
+      
+      // Check if server is running
+      try {
+        await api.get('/health');
+      } catch (error) {
+        console.error('Bot server is not running. Start it with: mineflare server start');
+        process.exit(1);
+      }
+      
+      if (options.dryRun) {
+        // Dry-run mode with simulation
+        const { ProgramSimulator } = require('./program-system/runner');
+        
+        let worldSnapshot = {};
+        if (options.worldSnapshot) {
+          worldSnapshot = JSON.parse(fs.readFileSync(options.worldSnapshot, 'utf8'));
+        } else {
+          // Generate basic snapshot
+          worldSnapshot = {
+            spawn: { x: 0, y: 63, z: 0 },
+            blocks: {},
+            inventory: [],
+            time: 0
+          };
+        }
+        
+        const simulator = new ProgramSimulator(worldSnapshot);
+        const result = await simulator.execute(source, args, capabilities, parseInt(options.timeout));
+        
+        console.log('Simulation completed:');
+        console.log(JSON.stringify(result, null, 2));
+      } else {
+        // Real execution
+        const MinecraftBotServer = require('./bot-server');
+        const botServer = new MinecraftBotServer();
+        
+        // Note: In real usage, we'd get the existing bot server instance
+        // For now, we'll create a temporary registry
+        const ProgramRegistry = require('./program-system/registry');
+        const registry = new ProgramRegistry(configManager);
+        
+        // Add and run the program
+        const programName = `temp_${Date.now()}`;
+        await registry.add(programName, source, { capabilities });
+        
+        const result = await registry.run(botServer, programName, args, {
+          timeout: parseInt(options.timeout),
+          seed: parseInt(options.seed)
+        });
+        
+        console.log('Program executed successfully:');
+        console.log(JSON.stringify(result, null, 2));
+        
+        // Clean up temp program
+        await registry.remove(programName);
+      }
+    } catch (error) {
+      console.error('Error:', error.message);
+      process.exit(1);
+    }
+  });
+
+programCmd
+  .command('add <file>')
+  .description('Register a named program for repeated use')
+  .requiredOption('--name <name>', 'Program name')
+  .option('--cap <capabilities>', 'Required capabilities (comma-separated)')
+  .action(async (file, options) => {
+    try {
+      const source = fs.readFileSync(file, 'utf8');
+      
+      const ProgramRegistry = require('./program-system/registry');
+      const registry = new ProgramRegistry(configManager);
+      
+      const capabilities = options.cap ? options.cap.split(',').map(c => c.trim()) : undefined;
+      const metadata = await registry.add(options.name, source, { capabilities });
+      
+      console.log(`Program '${options.name}' registered successfully`);
+      console.log('Version:', metadata.version);
+      console.log('Capabilities:', metadata.capabilities.join(', '));
+    } catch (error) {
+      console.error('Error:', error.message);
+      process.exit(1);
+    }
+  });
+
+programCmd
+  .command('run <name>')
+  .description('Run a registered program')
+  .option('--arg <key=value>', 'Program arguments (can be used multiple times)', collect, [])
+  .option('--timeout <ms>', 'Execution timeout in milliseconds')
+  .option('--seed <number>', 'Random seed for deterministic execution')
+  .action(async (name, options) => {
+    try {
+      // Check if server is running
+      try {
+        await api.get('/health');
+      } catch (error) {
+        console.error('Bot server is not running. Start it with: mineflare server start');
+        process.exit(1);
+      }
+      
+      const args = parseArgs(options.arg);
+      
+      const MinecraftBotServer = require('./bot-server');
+      const ProgramRegistry = require('./program-system/registry');
+      
+      // Note: In real usage, we'd get the existing bot server instance
+      const botServer = new MinecraftBotServer();
+      const registry = new ProgramRegistry(configManager);
+      
+      const result = await registry.run(botServer, name, args, {
+        timeout: options.timeout ? parseInt(options.timeout) : undefined,
+        seed: options.seed ? parseInt(options.seed) : undefined
+      });
+      
+      console.log('Program executed successfully:');
+      console.log(JSON.stringify(result, null, 2));
+    } catch (error) {
+      console.error('Error:', error.message);
+      process.exit(1);
+    }
+  });
+
+programCmd
+  .command('ls')
+  .description('List all registered programs')
+  .action(async () => {
+    try {
+      const ProgramRegistry = require('./program-system/registry');
+      const registry = new ProgramRegistry(configManager);
+      
+      const programs = await registry.list();
+      
+      if (programs.length === 0) {
+        console.log('No programs registered');
+        return;
+      }
+      
+      const table = new Table({
+        head: ['Name', 'Version', 'Capabilities', 'Created'],
+        colWidths: [20, 10, 40, 20]
+      });
+      
+      for (const prog of programs) {
+        table.push([
+          prog.name,
+          prog.version,
+          prog.capabilities.join(', '),
+          new Date(prog.created).toLocaleString()
+        ]);
+      }
+      
+      console.log(table.toString());
+    } catch (error) {
+      console.error('Error:', error.message);
+      process.exit(1);
+    }
+  });
+
+programCmd
+  .command('rm <name>')
+  .description('Remove a registered program')
+  .action(async (name) => {
+    try {
+      const ProgramRegistry = require('./program-system/registry');
+      const registry = new ProgramRegistry(configManager);
+      
+      await registry.remove(name);
+      console.log(`Program '${name}' removed successfully`);
+    } catch (error) {
+      console.error('Error:', error.message);
+      process.exit(1);
+    }
+  });
+
+programCmd
+  .command('cancel <runId>')
+  .description('Cancel a running program')
+  .action(async (runId) => {
+    try {
+      const ProgramRegistry = require('./program-system/registry');
+      const registry = new ProgramRegistry(configManager);
+      
+      await registry.cancel(runId);
+      console.log(`Program ${runId} cancelled`);
+    } catch (error) {
+      console.error('Error:', error.message);
+      process.exit(1);
+    }
+  });
+
+programCmd
+  .command('status <runId>')
+  .description('Get status of a program execution')
+  .action(async (runId) => {
+    try {
+      const ProgramRegistry = require('./program-system/registry');
+      const registry = new ProgramRegistry(configManager);
+      
+      const status = registry.getStatus(runId);
+      console.log(JSON.stringify(status, null, 2));
+    } catch (error) {
+      console.error('Error:', error.message);
+      process.exit(1);
+    }
+  });
+
+programCmd
+  .command('history')
+  .description('View program execution history')
+  .option('--limit <n>', 'Number of entries to show', '20')
+  .action(async (options) => {
+    try {
+      const ProgramRegistry = require('./program-system/registry');
+      const registry = new ProgramRegistry(configManager);
+      
+      const history = registry.getHistory(parseInt(options.limit));
+      
+      if (history.length === 0) {
+        console.log('No program execution history');
+        return;
+      }
+      
+      const table = new Table({
+        head: ['Run ID', 'Program', 'Status', 'Duration', 'Start Time'],
+        colWidths: [38, 20, 12, 12, 25]
+      });
+      
+      for (const entry of history) {
+        table.push([
+          entry.runId,
+          entry.programName,
+          entry.status,
+          entry.duration ? `${entry.duration}ms` : '-',
+          new Date(entry.startTime).toLocaleString()
+        ]);
+      }
+      
+      console.log(table.toString());
+    } catch (error) {
+      console.error('Error:', error.message);
+      process.exit(1);
+    }
+  });
+
 program.parse();
