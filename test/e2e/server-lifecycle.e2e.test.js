@@ -200,7 +200,7 @@ describe('E2E: Server Lifecycle', () => {
       ], {
         env: {
           ...process.env,
-          SERVER_PORT: port.toString(),
+          MINEFLARE_SERVER_PORT: port.toString(),
           MC_HOST: 'test.server.com',
           MC_USERNAME: 'ConfigTestBot',
           MC_VERSION: '1.20.1',

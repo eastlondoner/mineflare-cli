@@ -11,9 +11,9 @@ const path = require('path');
 const net = require('net');
 
 // Test configuration
-const SERVER_PORT = process.env.E2E_SERVER_PORT || 3001;
+const MINEFLARE_SERVER_PORT = process.env.E2E_SERVER_PORT || 3001;
 const MC_PORT = process.env.E2E_MC_PORT || 25565;
-const API_URL = `http://localhost:${SERVER_PORT}`;
+const API_URL = `http://localhost:${MINEFLARE_SERVER_PORT}`;
 const MINEFLARE_PATH = path.join(process.cwd(), 'src', 'mineflare.js');
 const TIMEOUT = parseInt(process.env.E2E_TIMEOUT) || 30000;
 
@@ -101,12 +101,12 @@ describe('E2E: CLI Commands', () => {
     }
     
     // Start the bot server for testing
-    console.log(`Starting test bot server on port ${SERVER_PORT}...`);
+    console.log(`Starting test bot server on port ${MINEFLARE_SERVER_PORT}...`);
     
     serverProcess = spawn('bun', [MINEFLARE_PATH, 'server', 'start'], {
       env: {
         ...process.env,
-        SERVER_PORT: SERVER_PORT.toString(),
+        MINEFLARE_SERVER_PORT: MINEFLARE_SERVER_PORT.toString(),
         MC_PORT: MC_PORT.toString(),
         MC_HOST: 'localhost',
         MC_USERNAME: 'CLITestBot',
@@ -127,8 +127,8 @@ describe('E2E: CLI Commands', () => {
     });
     
     // Wait for server to start
-    await waitForServer(SERVER_PORT);
-    console.log(`✅ Test server started on port ${SERVER_PORT}`);
+    await waitForServer(MINEFLARE_SERVER_PORT);
+    console.log(`✅ Test server started on port ${MINEFLARE_SERVER_PORT}`);
   }, TIMEOUT);
   
   afterAll(async () => {
@@ -400,7 +400,7 @@ describe('E2E: CLI Commands', () => {
       const result = await runCommand(['server', 'start', '--daemon'], {
         env: {
           ...process.env,
-          SERVER_PORT: (SERVER_PORT + 100).toString() // Use different port
+          MINEFLARE_SERVER_PORT: (MINEFLARE_SERVER_PORT + 100).toString() // Use different port
         }
       });
       
@@ -415,12 +415,12 @@ describe('E2E: CLI Commands', () => {
       serverProcess = spawn('bun', [MINEFLARE_PATH, 'server', 'start'], {
         env: {
           ...process.env,
-          SERVER_PORT: SERVER_PORT.toString(),
+          MINEFLARE_SERVER_PORT: MINEFLARE_SERVER_PORT.toString(),
           MC_PORT: MC_PORT.toString()
         }
       });
       
-      await waitForServer(SERVER_PORT);
+      await waitForServer(MINEFLARE_SERVER_PORT);
     });
   });
   
@@ -583,7 +583,7 @@ describe('E2E: CLI Commands', () => {
         }
       });
       
-      await waitForServer(SERVER_PORT);
+      await waitForServer(MINEFLARE_SERVER_PORT);
     });
     
     it('should handle missing required arguments', async () => {

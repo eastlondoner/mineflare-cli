@@ -101,7 +101,7 @@ describe('ConfigManager', () => {
 
     it('should apply environment variable overrides', () => {
       process.env.MC_USERNAME = 'TestBot';
-      process.env.SERVER_PORT = '4000';
+      process.env.MINEFLARE_SERVER_PORT = '4000';
       process.env.ENABLE_VIEWER = 'false';
       
       // Need to recreate ConfigManager to pick up env vars

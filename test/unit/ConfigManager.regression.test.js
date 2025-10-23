@@ -136,7 +136,7 @@ describe('ConfigManager Regression Tests', () => {
           'MC_USERNAME': { value: 'TestUser', path: 'minecraft.username' },
           'MC_VERSION': { value: '1.20.0', path: 'minecraft.version' },
           'MC_AUTH': { value: 'microsoft', path: 'minecraft.auth' },
-          'SERVER_PORT': { value: '4000', path: 'server.port', expected: 4000 },
+          'MINEFLARE_SERVER_PORT': { value: '4000', path: 'server.port', expected: 4000 },
           'API_BASE': { value: 'http://test:3000', path: 'api.baseUrl' },
           'ENABLE_VIEWER': { value: 'false', path: 'viewer.enabled', expected: false },
           'VIEWER_PORT': { value: '3009', path: 'viewer.port', expected: 3009 },
@@ -161,7 +161,7 @@ describe('ConfigManager Regression Tests', () => {
       });
 
       it('should handle invalid port numbers', () => {
-        process.env.SERVER_PORT = '-1';
+        process.env.MINEFLARE_SERVER_PORT = '-1';
         delete require.cache[require.resolve('../../src/config/ConfigManager.js')];
         const cm = require('../../src/config/ConfigManager.js');
         // Should still parse but might be invalid for validation

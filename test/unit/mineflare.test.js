@@ -131,7 +131,7 @@ describe('Mineflare Main Entry Point', () => {
         const serverConfig = mockConfigManager.get();
         
         // Test environment variable setting
-        process.env.SERVER_PORT = serverConfig.server.port;
+        process.env.MINEFLARE_SERVER_PORT = serverConfig.server.port;
         process.env.MC_HOST = serverConfig.minecraft.host;
         process.env.MC_PORT = serverConfig.minecraft.port;
         process.env.MC_USERNAME = serverConfig.minecraft.username;
@@ -140,7 +140,7 @@ describe('Mineflare Main Entry Point', () => {
         process.env.ENABLE_VIEWER = serverConfig.viewer.enabled;
         process.env.VIEWER_PORT = serverConfig.viewer.port;
         
-        expect(process.env.SERVER_PORT).toBe(3000);
+        expect(process.env.MINEFLARE_SERVER_PORT).toBe(3000);
         expect(process.env.MC_HOST).toBe('localhost');
         expect(process.env.MC_PORT).toBe(25565);
         expect(process.env.MC_USERNAME).toBe('TestBot');
