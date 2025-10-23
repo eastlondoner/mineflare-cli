@@ -2,6 +2,8 @@
 
 AI-controlled Minecraft bot with HTTP API and CLI interface. Available as a single `mineflayer` executable that combines both server and client functionality.
 
+**Platform Support:** Linux and macOS only. Windows is not supported.
+
 ## Features
 
 - **HTTP API** - REST endpoints for AI agents to control the bot
@@ -15,7 +17,7 @@ AI-controlled Minecraft bot with HTTP API and CLI interface. Available as a sing
 
 ## Quick Start (Single Executable)
 
-Download the latest release from [GitHub Releases](https://github.com/eastlondoner/mineflare-cli/releases) or build it yourself:
+Download the latest release from [GitHub Releases](https://github.com/eastlondoner/mineflare-cli/releases) for Linux or macOS, or build it yourself:
 
 ```bash
 # Build the executable

@@ -33,9 +33,8 @@ These commands will:
 
 Once you push a tag starting with `v`, GitHub Actions will:
 
-1. **Build executables** for all platforms:
+1. **Build executables** for supported platforms:
    - Linux x64 (modern and baseline)
-   - Windows x64 (modern and baseline)
    - macOS ARM64 (Apple Silicon)
    - macOS x64 (Intel)
 
@@ -65,7 +64,6 @@ If you need to create a release manually:
 ```bash
 # Build for all platforms
 bun run build:linux
-bun run build:windows
 bun run build:mac
 
 # Or build for specific platform
@@ -81,10 +79,6 @@ bun build --compile --minify --sourcemap \
 # Linux/macOS
 tar czf mineflayer-linux-x64.tar.gz mineflayer-linux-x64
 sha256sum mineflayer-linux-x64.tar.gz > mineflayer-linux-x64.tar.gz.sha256
-
-# Windows (PowerShell)
-Compress-Archive -Path mineflayer-windows-x64.exe -DestinationPath mineflayer-windows-x64.zip
-Get-FileHash -Algorithm SHA256 mineflayer-windows-x64.zip
 ```
 
 ### 3. Create GitHub Release
@@ -112,13 +106,11 @@ Pre-release tags are automatically marked as pre-releases on GitHub.
 - **Modern (x64)**: For CPUs from 2013+ with AVX2 support
 - **Baseline (x64-baseline)**: For older CPUs without AVX2
 
-### Windows
-- **Modern (x64)**: For CPUs from 2013+ with AVX2 support
-- **Baseline (x64-baseline)**: For older CPUs without AVX2
-
 ### macOS
 - **ARM64**: For Apple Silicon Macs (M1, M2, M3)
 - **x64**: For Intel-based Macs
+
+**Note:** Windows is not supported. Windows users should use WSL (Windows Subsystem for Linux) or a Linux VM.
 
 ## Troubleshooting
 

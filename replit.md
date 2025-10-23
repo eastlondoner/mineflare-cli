@@ -3,6 +3,8 @@
 ## Overview
 AI-controlled Minecraft bot system with HTTP API and CLI interface. Built with Mineflayer and Express.js running on Bun 1.2. Includes a local Minecraft Paper 1.21.8 server. Available as a single `mineflayer` executable that combines both server and client functionality.
 
+**Platform Support:** Linux and macOS only. Windows is not supported.
+
 ## Purpose
 Allows AI agents to control a Minecraft bot through a REST API. The bot can move, dig, place blocks, chat, and more. Includes event logging with timestamps and screenshot capability.
 
@@ -90,6 +92,7 @@ Environment variables (see `.env.example`):
 - 2025-10-23: Implemented crafting system with recipes and equipment management
 - 2025-10-23: Added batch job system for executing sequences of instructions
 - 2025-10-23: Created single `mineflayer` executable combining server daemon and CLI functionality
+- 2025-10-23: Linux and macOS support only - Windows explicitly not supported
 
 ## User Preferences
 None specified yet.

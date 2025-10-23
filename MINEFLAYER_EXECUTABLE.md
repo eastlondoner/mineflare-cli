@@ -18,7 +18,6 @@ bun run build
 
 # Build for specific platforms
 bun run build:linux     # Linux x64
-bun run build:windows   # Windows x64  
 bun run build:mac       # macOS ARM64
 ```
 
@@ -175,9 +174,10 @@ The executable is completely self-contained. To distribute:
 ## Platform Support
 
 - **Linux x64**: Most servers and desktops
-- **Windows x64**: Windows 10/11
-- **macOS ARM64**: Apple Silicon Macs
-- **macOS x64**: Intel Macs (use build:mac with --target=bun-darwin-x64)
+- **macOS ARM64**: Apple Silicon Macs (M1/M2/M3)
+- **macOS x64**: Intel Macs
+
+**Note:** Windows is not supported. Windows users should use WSL (Windows Subsystem for Linux) or a Linux VM.
 
 ## File Structure
 
