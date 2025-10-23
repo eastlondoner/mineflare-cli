@@ -148,6 +148,7 @@ jobs:
           #### Linux
           - **Modern CPUs (2013+)**: \`mineflare-linux-x64.tar.gz\`
           - **Older CPUs**: \`mineflare-linux-x64-baseline.tar.gz\`
+          - **ARM64/AArch64**: \`mineflare-linux-arm64.tar.gz\` (AWS Graviton, Raspberry Pi 4+, etc.)
           
           #### Windows
           - **Modern CPUs (2013+)**: \`mineflare-windows-x64.zip\`
