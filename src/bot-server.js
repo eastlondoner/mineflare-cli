@@ -7,6 +7,8 @@ class MinecraftBotServer {
     this.events = [];
     this.app = express();
     this.viewer = null;
+    this.config = null; // Store config for reconnection
+    this.isReconnecting = false;
     
     this.app.use(express.json());
     this.setupRoutes();
@@ -22,7 +24,60 @@ class MinecraftBotServer {
     console.log(`[EVENT] ${type}:`, data);
   }
 
+  handleReconnect() {
+    // Prevent multiple reconnection attempts
+    if (this.isReconnecting) {
+      console.log('[BOT] Reconnection already in progress...');
+      return;
+    }
+    
+    this.isReconnecting = true;
+    console.log('[BOT] Starting reconnection process...');
+    
+    // Clean up old bot instance
+    if (this.bot) {
+      try {
+        // Remove all listeners to prevent memory leaks
+        this.bot.removeAllListeners();
+        
+        // End the connection if it exists
+        if (this.bot._client && !this.bot._client.ended) {
+          this.bot.quit();
+        }
+      } catch (err) {
+        console.log('[BOT] Error cleaning up old bot instance:', err.message);
+      }
+      this.bot = null;
+    }
+    
+    // Close viewer if it exists
+    if (this.viewer) {
+      try {
+        this.viewer.close();
+      } catch (err) {
+        console.log('[BOT] Error closing viewer:', err.message);
+      }
+      this.viewer = null;
+    }
+    
+    // Wait a bit before reconnecting to let server clean up
+    setTimeout(() => {
+      if (this.config) {
+        console.log('[BOT] Attempting to reconnect...');
+        this.setupBot(this.config);
+        this.isReconnecting = false;
+        this.logEvent('reconnect', { timestamp: Date.now() });
+      } else {
+        console.error('[BOT] Cannot reconnect: no config stored');
+        this.isReconnecting = false;
+      }
+    }, 3000);
+  }
+
   setupBot(config) {
+    // Store config for potential reconnection
+    this.config = config;
+    
     this.bot = mineflayer.createBot({
       host: config.host || 'localhost',
       port: config.port || 25565,
@@ -62,6 +117,73 @@ class MinecraftBotServer {
 
     this.bot.on('death', () => {
       this.logEvent('death', { position: this.bot.entity.position });
+      
+      // Add automatic respawn after death to prevent death loop
+      console.log('[BOT] Died, attempting to respawn...');
+      
+      // Clear any control states immediately
+      this.bot.clearControlStates();
+      
+      // Clear digging state safely
+      if (this.bot.targetDigBlock) {
+        try {
+          this.bot.stopDigging();
+        } catch (err) {
+          console.log('[BOT] Error stopping digging on death:', err.message);
+        }
+        this.bot.targetDigBlock = null;
+      }
+      
+      // Set up respawn tracking
+      let respawnSuccessful = false;
+      const respawnTimeout = setTimeout(() => {
+        if (!respawnSuccessful) {
+          console.log('[BOT] Respawn timeout - bot stuck, triggering reconnection...');
+          this.handleReconnect();
+        }
+      }, 5000); // 5 second timeout for respawn
+      
+      // Listen for successful respawn
+      const onRespawn = () => {
+        respawnSuccessful = true;
+        clearTimeout(respawnTimeout);
+        console.log('[BOT] Successfully respawned!');
+        this.logEvent('respawn_success', { timestamp: Date.now() });
+        // Clean up listener
+        this.bot.removeListener('spawn', onRespawn);
+      };
+      
+      this.bot.once('spawn', onRespawn);
+      
+      // Add a small delay then attempt respawn using proper API
+      setTimeout(() => {
+        try {
+          // Check if bot is still connected before trying to respawn
+          if (this.bot && this.bot._client && !this.bot._client.ended) {
+            // Use proper mineflayer respawn API
+            if (typeof this.bot.respawn === 'function') {
+              this.bot.respawn();
+              console.log('[BOT] Respawn method called');
+            } else {
+              // Fallback: send client command packet directly
+              this.bot._client.write('client_command', { action: 1 }); // 1 = respawn
+              console.log('[BOT] Respawn packet sent directly');
+            }
+            
+            this.logEvent('respawn_attempt', { timestamp: Date.now() });
+          } else {
+            console.log('[BOT] Bot disconnected after death, triggering reconnection...');
+            clearTimeout(respawnTimeout);
+            this.handleReconnect();
+          }
+        } catch (error) {
+          console.error('[BOT] Error during respawn attempt:', error);
+          this.logEvent('respawn_error', { error: error.message });
+          clearTimeout(respawnTimeout);
+          // If respawn fails, try to reconnect
+          this.handleReconnect();
+        }
+      }, 1000);
     });
 
     this.bot.on('kicked', (reason) => {
@@ -69,7 +191,14 @@ class MinecraftBotServer {
     });
 
     this.bot.on('error', (err) => {
+      console.error('[BOT] Error occurred:', err);
       this.logEvent('error', { message: err.message });
+      
+      // If error occurs right after death, it might be the digging plugin bug
+      if (err.message && (err.message.includes('removeAllListeners') || err.message.includes('undefined is not an object'))) {
+        console.log('[BOT] Caught digging plugin cleanup error, attempting recovery...');
+        this.handleReconnect();
+      }
     });
 
     this.bot.on('entitySpawn', (entity) => {
@@ -106,6 +235,16 @@ class MinecraftBotServer {
   setupRoutes() {
     this.app.get('/health', (req, res) => {
       res.json({ status: 'ok', botConnected: this.bot !== null && this.bot.player !== null });
+    });
+
+    this.app.post('/reconnect', (req, res) => {
+      if (this.isReconnecting) {
+        return res.status(400).json({ error: 'Reconnection already in progress' });
+      }
+      
+      console.log('[API] Manual reconnection requested');
+      this.handleReconnect();
+      res.json({ success: true, message: 'Reconnection initiated' });
     });
 
     this.app.get('/state', (req, res) => {
