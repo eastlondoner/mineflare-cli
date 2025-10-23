@@ -146,6 +146,12 @@ The project includes a comprehensive E2E testing framework with **zero mocks**:
   - Prevents crash when processing non-string environment variables
   - Handles boolean values correctly whether string, boolean, or number type
   - Validated fix with comprehensive test suite
+- 2025-10-23: Fixed critical bot death loop issue
+  - Implemented automatic respawn using proper mineflayer API (bot.respawn() / client_command packet)
+  - Added respawn verification with timeout-based reconnection fallback
+  - Safely handles digging plugin cleanup errors that caused the original crash
+  - Works on both operator and non-operator servers
+  - Prevents bots from getting stuck on death screen
 
 ## User Preferences
 None specified yet.
