@@ -1,0 +1,20 @@
+{
+  "server": {
+    "port": 3200,
+    "host": "0.0.0.0"
+  },
+  "minecraft": {
+    "host": "localhost",
+    "port": 25565,
+    "username": "TestBot1761240762975",
+    "version": "1.21.1",
+    "auth": "microsoft"
+  },
+  "viewer": {
+    "enabled": false
+  },
+  "logging": {
+    "level": "info"
+  },
+  "port": 3200
+}
