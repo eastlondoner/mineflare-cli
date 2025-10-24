@@ -14,6 +14,14 @@ class MinecraftBotServer {
     this.setupRoutes();
   }
 
+  isConnected() {
+    // Unified bot connection check used by both HTTP handlers and ProgramRunner
+    return this.bot && 
+           this.bot.entity && 
+           this.bot._client && 
+           !this.bot._client.ended;
+  }
+
   logEvent(type, data) {
     const event = {
       timestamp: Date.now(),
@@ -838,6 +846,85 @@ class MinecraftBotServer {
         stopped: false,
         results
       });
+    });
+
+    // Program execution endpoints
+    this.app.post('/program/exec', async (req, res) => {
+      try {
+        const { source, capabilities = [], args = {}, timeout = 900000, seed = 1 } = req.body;
+        
+        if (!this.isConnected()) {
+          return res.status(503).json({
+            success: false,
+            error: 'Bot is not connected to server'
+          });
+        }
+        
+        const ProgramRunner = require('./program-system/runner');
+        const runId = `run-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        
+        const runner = new ProgramRunner(this, {
+          runId,
+          programName: 'temp_' + Date.now(),
+          source,
+          metadata: { capabilities },
+          args,
+          timeout,
+          capabilities,
+          seed
+        });
+        
+        const result = await runner.execute();
+        
+        res.json(result);
+      } catch (error) {
+        res.status(500).json({
+          success: false,
+          error: error.message
+        });
+      }
+    });
+
+    this.app.post('/program/add', async (req, res) => {
+      try {
+        const { name, source } = req.body;
+        
+        const ProgramRegistry = require('./program-system/registry');
+        const registry = new ProgramRegistry(this.configManager);
+        await registry.initStorage();
+        
+        await registry.add(name, source);
+        
+        res.json({ success: true, message: `Program '${name}' added successfully` });
+      } catch (error) {
+        res.status(400).json({ success: false, error: error.message });
+      }
+    });
+
+    this.app.get('/program/list', async (req, res) => {
+      try {
+        const ProgramRegistry = require('./program-system/registry');
+        const registry = new ProgramRegistry(this.configManager);
+        await registry.initStorage();
+        
+        const programs = await registry.list();
+        res.json({ success: true, programs });
+      } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    this.app.delete('/program/:name', async (req, res) => {
+      try {
+        const ProgramRegistry = require('./program-system/registry');
+        const registry = new ProgramRegistry(this.configManager);
+        await registry.initStorage();
+        
+        await registry.remove(req.params.name);
+        res.json({ success: true, message: `Program '${req.params.name}' removed successfully` });
+      } catch (error) {
+        res.status(400).json({ success: false, error: error.message });
+      }
     });
   }
 
