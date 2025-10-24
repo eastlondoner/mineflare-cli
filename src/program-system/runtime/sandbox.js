@@ -162,12 +162,24 @@ class ProgramSandbox {
             microtaskMode: 'afterEvaluate'
           });
           
-          // If the script returns a program definition, run it
-          if (result && typeof result.run === 'function') {
-            result.run(programContext)
+          // Check for module.exports pattern
+          const exported = this.contextObject.module?.exports;
+          const programDef = exported || result;
+          
+          // If it's a function (old module.exports pattern), execute it
+          if (typeof programDef === 'function') {
+            Promise.resolve(programDef(programContext))
               .then(resolve)
               .catch(reject);
-          } else {
+          } 
+          // If the script returns a program definition, run it
+          else if (programDef && typeof programDef.run === 'function') {
+            programDef.run(programContext)
+              .then(resolve)
+              .catch(reject);
+          } 
+          // Otherwise, return the result as-is
+          else {
             resolve(result);
           }
         } catch (error) {
@@ -244,45 +256,64 @@ class ProgramSandbox {
       globalThis.setTimeout = globalThis.__timers.setTimeout.bind(globalThis.__timers);
       globalThis.clearTimeout = globalThis.__timers.clearTimeout.bind(globalThis.__timers);
       
-      globalThis.mineflareSDK = {
-        ok: (value) => ({ ok: true, value }),
-        fail: (error) => ({ ok: false, error }),
-        defineProgram: (spec) => {
-          if (!spec.name) throw new Error('Program must have a name');
-          if (!spec.run || typeof spec.run !== 'function') {
-            throw new Error('Program must have a run function');
-          }
-          spec.version = spec.version || '1.0.0';
-          spec.capabilities = spec.capabilities || [];
-          spec.defaults = spec.defaults || {};
-          return spec;
-        },
-        Vec3: class Vec3 {
-          constructor(x, y, z) {
-            this.x = x;
-            this.y = y;
-            this.z = z;
-          }
-          offset(dx, dy, dz) {
-            return new Vec3(this.x + dx, this.y + dy, this.z + dz);
-          }
-          clone() {
-            return new Vec3(this.x, this.y, this.z);
-          }
-          distanceTo(other) {
-            const dx = other.x - this.x;
-            const dy = other.y - this.y;
-            const dz = other.z - this.z;
-            return Math.sqrt(dx * dx + dy * dy + dz * dz);
-          }
-        },
-        sleep: (ms) => {
-          return new Promise(resolve => setTimeout(resolve, ms));
+      // Define Vec3 class first
+      class Vec3 {
+        constructor(x, y, z) {
+          this.x = x;
+          this.y = y;
+          this.z = z;
         }
+        offset(dx, dy, dz) {
+          return new Vec3(this.x + dx, this.y + dy, this.z + dz);
+        }
+        clone() {
+          return new Vec3(this.x, this.y, this.z);
+        }
+        distanceTo(other) {
+          const dx = other.x - this.x;
+          const dy = other.y - this.y;
+          const dz = other.z - this.z;
+          return Math.sqrt(dx * dx + dy * dy + dz * dz);
+        }
+      }
+      
+      // Create SDK functions
+      const ok = (value) => ({ ok: true, value });
+      const fail = (error) => ({ ok: false, error });
+      const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+      
+      const defineProgram = (spec) => {
+        if (!spec.name) throw new Error('Program must have a name');
+        if (!spec.run || typeof spec.run !== 'function') {
+          throw new Error('Program must have a run function');
+        }
+        spec.version = spec.version || '1.0.0';
+        spec.capabilities = spec.capabilities || [];
+        spec.defaults = spec.defaults || {};
+        return spec;
       };
       
-      // Make SDK available globally
-      const { ok, fail, defineProgram, Vec3, sleep } = globalThis.mineflareSDK;
+      // Create and expose the SDK
+      globalThis.mineflareSDK = {
+        ok,
+        fail,
+        defineProgram,
+        Vec3,
+        sleep
+      };
+      
+      // Make SDK components directly available on globalThis for convenience
+      globalThis.ok = ok;
+      globalThis.fail = fail;
+      globalThis.defineProgram = defineProgram;
+      globalThis.Vec3 = Vec3;
+      globalThis.sleep = sleep;
+      
+      // Support for module.exports pattern
+      globalThis.module = {
+        exports: {}
+      };
+      globalThis.exports = globalThis.module.exports;
     `;
     
     vm.runInContext(sdkCode, this.context);
@@ -352,34 +383,52 @@ class ProgramSandbox {
         timeout: 5000
       });
       
-      if (!result || typeof result !== 'object') {
+      // Check for module.exports pattern
+      const exported = testSandbox.contextObject.module?.exports;
+      const programDef = exported || result;
+      
+      // If it's a function (old module.exports pattern), that's valid
+      if (typeof programDef === 'function') {
         return {
-          valid: false,
-          error: 'Program must export a program definition using defineProgram()'
+          valid: true,
+          metadata: {
+            name: 'unnamed-program',
+            version: '1.0.0',
+            capabilities: [],
+            defaults: {}
+          }
         };
       }
       
-      if (!result.name) {
+      // Check for defineProgram pattern
+      if (!programDef || typeof programDef !== 'object') {
+        return {
+          valid: false,
+          error: 'Program must export a program definition using defineProgram() or module.exports'
+        };
+      }
+      
+      if (!programDef.name) {
         return {
           valid: false,
           error: 'Program must have a name'
         };
       }
       
-      if (typeof result.run !== 'function') {
+      if (typeof programDef.run !== 'function' && typeof programDef !== 'function') {
         return {
           valid: false,
-          error: 'Program must have a run function'
+          error: 'Program must have a run function or be a function'
         };
       }
       
       return {
         valid: true,
         metadata: {
-          name: result.name,
-          version: result.version || '1.0.0',
-          capabilities: result.capabilities || [],
-          defaults: result.defaults || {}
+          name: programDef.name || 'unnamed-program',
+          version: programDef.version || '1.0.0',
+          capabilities: programDef.capabilities || [],
+          defaults: programDef.defaults || {}
         }
       };
     } catch (error) {

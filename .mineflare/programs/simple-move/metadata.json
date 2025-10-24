@@ -1,0 +1,13 @@
+{
+  "name": "simple-move",
+  "version": "1.0.0",
+  "capabilities": [
+    "move"
+  ],
+  "defaults": {
+    "x": 10,
+    "y": 63,
+    "z": 10
+  },
+  "created": 1761265570654
+}

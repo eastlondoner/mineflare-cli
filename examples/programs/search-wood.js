@@ -1,5 +1,5 @@
 // Program to search for wood in an expanding pattern
-const { defineProgram, ok, fail, Vec3 } = globalThis.mineflareSDK;
+// SDK components are available globally - use them directly
 
 const program = defineProgram({
   name: 'search-wood',

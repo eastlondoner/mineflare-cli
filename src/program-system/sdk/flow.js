@@ -159,14 +159,7 @@ async function transaction(steps) {
     try {
       const result = await step.operation();
       
-      // Track completed step
-      completedSteps.push({
-        index: i,
-        name: stepName,
-        rollback: step.rollback
-      });
-      
-      // Check if step failed
+      // Check if step failed (before adding to completed)
       if (result && typeof result === 'object' && 'ok' in result && !result.ok) {
         // Rollback completed steps in reverse order
         await rollbackSteps(completedSteps);
@@ -176,6 +169,13 @@ async function transaction(steps) {
           completedSteps: completedSteps.map(s => s.name)
         };
       }
+      
+      // Track completed step only if successful
+      completedSteps.push({
+        index: i,
+        name: stepName,
+        rollback: step.rollback
+      });
     } catch (error) {
       // Rollback on exception
       await rollbackSteps(completedSteps);
@@ -235,13 +235,18 @@ async function parallel(operations, concurrency = 3) {
     
     results[i] = promise;
     
-    if (operations.length >= concurrency) {
-      executing.push(promise);
-      
-      if (executing.length >= concurrency) {
-        await Promise.race(executing);
-        executing.splice(executing.findIndex(p => p === promise), 1);
-      }
+    // Track the promise for concurrency control
+    const trackingPromise = promise.then(result => {
+      // Remove this promise from executing when it completes
+      executing.splice(executing.indexOf(trackingPromise), 1);
+      return result;
+    });
+    
+    executing.push(trackingPromise);
+    
+    // When we reach the concurrency limit, wait for one to complete
+    if (executing.length >= concurrency) {
+      await Promise.race(executing);
     }
   }
   

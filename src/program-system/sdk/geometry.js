@@ -363,15 +363,21 @@ function getLine(from, to, stepSize = 1) {
  * Get positions in a circle
  * @param {Vec3} center - Center of circle
  * @param {number} radius - Circle radius
- * @param {Object} options - Circle options
+ * @param {Object|number} options - Circle options or number of points
  * @param {number} [options.points=8] - Number of points
  * @param {number} [options.y] - Y level (defaults to center.y)
  * @returns {Array<Vec3>} Array of positions on circle
  * 
  * @example
  * const circle = getCircle(center, 5, { points: 16 });
+ * const circle = getCircle(center, 5, 16); // Also accepts number of points directly
  */
 function getCircle(center, radius, options = {}) {
+  // Handle backwards compatibility - if options is a number, treat it as points
+  if (typeof options === 'number') {
+    options = { points: options };
+  }
+  
   const {
     points = 8,
     y = center.y
@@ -426,20 +432,27 @@ function getDisc(center, radius, options = {}) {
 }
 
 /**
- * Clamp vector components to range
- * @param {Vec3} vector - Vector to clamp
- * @param {Vec3} min - Minimum values
- * @param {Vec3} max - Maximum values
- * @returns {Vec3} Clamped vector
+ * Clamp a value or vector to range
+ * @param {number|Vec3} value - Value or vector to clamp
+ * @param {number|Vec3} min - Minimum value(s)
+ * @param {number|Vec3} max - Maximum value(s)
+ * @returns {number|Vec3} Clamped value or vector
  * 
  * @example
  * const bounded = clamp(position, worldMin, worldMax);
+ * const boundedValue = clamp(5, 0, 10);
  */
-function clamp(vector, min, max) {
+function clamp(value, min, max) {
+  // Handle scalar clamp
+  if (typeof value === 'number') {
+    return Math.max(min, Math.min(max, value));
+  }
+  
+  // Handle vector clamp
   return new Vec3(
-    Math.max(min.x, Math.min(max.x, vector.x)),
-    Math.max(min.y, Math.min(max.y, vector.y)),
-    Math.max(min.z, Math.min(max.z, vector.z))
+    Math.max(min.x, Math.min(max.x, value.x)),
+    Math.max(min.y, Math.min(max.y, value.y)),
+    Math.max(min.z, Math.min(max.z, value.z))
   );
 }
 

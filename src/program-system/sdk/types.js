@@ -38,6 +38,10 @@ class Vec3 {
     const dz = other.z - this.z;
     return Math.sqrt(dx * dx + dy * dy + dz * dz);
   }
+  
+  equals(other) {
+    return this.x === other.x && this.y === other.y && this.z === other.z;
+  }
 }
 
 // Block reference type
