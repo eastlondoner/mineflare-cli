@@ -50,22 +50,22 @@ process.on('message', (msg) => {
         }, 1000);
       }
       
-      // Register death handler only after spawn completes
+      // Register death handler immediately to catch all death events
       if (!deathHandlerRegistered) {
-        setTimeout(() => {
-          console.log('[BOT-PROCESS] Registering death handler after spawn');
-          bot.on('death', () => {
-            console.log('[BOT-PROCESS] Bot died');
-            process.send({ type: 'died' });
-            
-            setTimeout(() => {
-              if (bot.health === 0) {
-                bot.chat('/respawn');
-              }
-            }, 1000);
-          });
-          deathHandlerRegistered = true;
-        }, 500); // Delay death handler registration
+        console.log('[BOT-PROCESS] Registering death handler immediately');
+        bot.on('death', () => {
+          console.log('[BOT-PROCESS] Bot died');
+          process.send({ type: 'died' });
+          
+          // Auto-respawn after a short delay
+          setTimeout(() => {
+            if (bot.health === 0) {
+              console.log('[BOT-PROCESS] Sending respawn command');
+              bot.chat('/respawn');
+            }
+          }, 1000);
+        });
+        deathHandlerRegistered = true;
       }
     });
     

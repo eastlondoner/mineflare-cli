@@ -208,6 +208,14 @@ The project includes a comprehensive E2E testing framework with **zero mocks**:
   - Resolved "Bot is not connected to server" errors that occurred despite bot being connected
   - E2E tests confirm programs now execute on the connected bot server instance
   - Note: SDK implementation issues (control.success) remain as separate bugs to address
+- 2025-10-24: Fixed critical death handling crash that killed entire bot server
+  - Implemented process isolation architecture (bot-server-isolated.js and bot-process.js)
+  - Bot now runs in separate child process - crashes don't kill main server
+  - Patched removeAllListeners to handle uninitialized _events property
+  - Fixed race condition in all API timeout handlers (headersSent check)
+  - Death handler now registered immediately on spawn to catch instant deaths
+  - Auto-restart mechanism recovers from crashes within 3 seconds
+  - All original API endpoints restored and functional
 
 ## User Preferences
 None specified yet.
