@@ -173,6 +173,33 @@ serverCmd
       console.log(`  Minecraft: ${serverConfig.minecraft.host}:${serverConfig.minecraft.port}`);
       console.log(`  Username: ${serverConfig.minecraft.username}`);
       console.log(`  Viewer: ${serverConfig.viewer.enabled ? `http://localhost:${serverConfig.viewer.port}` : 'disabled'}`);
+      
+      // Save PID even for non-daemon mode to prevent multiple instances
+      fs.writeFileSync(pidFile, process.pid.toString());
+      
+      // Clean up PID file on exit
+      const cleanup = () => {
+        if (fs.existsSync(pidFile)) {
+          const savedPid = parseInt(fs.readFileSync(pidFile, 'utf8'));
+          if (savedPid === process.pid) {
+            fs.unlinkSync(pidFile);
+            console.log('\nCleaned up PID file');
+          }
+        }
+      };
+      
+      process.on('exit', cleanup);
+      process.on('SIGINT', () => {
+        console.log('\nReceived SIGINT, shutting down...');
+        cleanup();
+        process.exit(0);
+      });
+      process.on('SIGTERM', () => {
+        console.log('\nReceived SIGTERM, shutting down...');
+        cleanup();
+        process.exit(0);
+      });
+      
       require('./server');
     }
   });
