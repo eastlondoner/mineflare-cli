@@ -113,6 +113,258 @@ All CLI commands work directly with the executable:
 ./mineflare batch -f examples/batch-simple.json
 ```
 
+### Program System Commands
+
+The program system allows you to run deterministic, sandboxed JavaScript programs that control the bot using the SDK.
+
+#### Execute Program File
+
+```bash
+# Execute a program file directly
+./mineflare program exec examples/programs/hello-world.js
+
+# Execute with custom capabilities
+./mineflare program exec mining-bot.js --capabilities move,dig,place
+
+# Execute with arguments
+./mineflare program exec collector.js --args '{"target":"diamond_ore","radius":50}'
+
+# Execute with timeout (ms)
+./mineflare program exec long-task.js --timeout 300000
+
+# Dry-run simulation (no actual bot actions)
+./mineflare program exec risky-program.js --dry-run
+
+# Execute with specific seed for deterministic behavior
+./mineflare program exec explorer.js --seed 42
+```
+
+#### Register Program
+
+```bash
+# Add a program to the registry
+./mineflare program add examples/programs/smart-miner.js
+
+# Add with custom name
+./mineflare program add my-script.js --name "Wood Collector"
+
+# Add with specific capabilities
+./mineflare program add builder.js --capabilities move,place,inventory
+```
+
+#### Run Registered Program
+
+```bash
+# Run a registered program by name
+./mineflare program run smart-miner
+
+# Run with arguments
+./mineflare program run "Wood Collector" --args '{"maxLogs":64}'
+
+# Run with custom timeout
+./mineflare program run explorer --timeout 600000
+
+# Run with specific seed
+./mineflare program run pathfinder --seed 123
+```
+
+#### List Programs
+
+```bash
+# List all registered programs
+./mineflare program ls
+
+# Output:
+# Name            Version  Capabilities           Created
+# smart-miner     1.0.0    move,dig,pathfind     2024-10-24T10:30:00
+# Wood Collector  1.0.0    move,dig,inventory    2024-10-24T11:00:00
+# builder         2.1.0    move,place,craft      2024-10-24T12:00:00
+```
+
+#### Remove Program
+
+```bash
+# Remove a registered program
+./mineflare program rm smart-miner
+
+# Remove with confirmation
+./mineflare program rm "Wood Collector" --force
+```
+
+#### Program Execution Control
+
+```bash
+# Cancel a running program
+./mineflare program cancel <runId>
+
+# Check program execution status
+./mineflare program status <runId>
+
+# View execution history
+./mineflare program history
+
+# View detailed history with limit
+./mineflare program history --limit 10 --verbose
+```
+
+### SDK Usage Examples
+
+#### Basic Movement Program
+```javascript
+// move-forward.js
+module.exports = async function(ctx) {
+  const { ok, fail, Vec3 } = ctx;
+  
+  // Move 5 blocks north
+  const result = await ctx.move.moveCardinal('north', 5);
+  
+  if (result.ok) {
+    return ok(`Moved to ${result.value}`);
+  } else {
+    return fail(`Movement failed: ${result.error}`);
+  }
+};
+```
+
+#### Resource Collection with Safety
+```javascript
+// safe-mining.js
+module.exports = async function(ctx) {
+  const { ok, fail } = ctx;
+  
+  // Monitor health while mining
+  const vitalCheck = await ctx.safety.monitorVitals({
+    minHealth: 10,
+    minFood: 5,
+    action: async () => {
+      // Search for and mine diamonds
+      const searchResult = await ctx.search.expandSquare({
+        radius: 30,
+        predicate: async (pos) => {
+          const blocks = await ctx.world.scan.blocks({
+            kinds: ['diamond_ore'],
+            radius: 3,
+            max: 1
+          });
+          return blocks.length > 0;
+        }
+      });
+      
+      if (searchResult.ok) {
+        await ctx.actions.gather.mineBlock({
+          position: searchResult.value.position
+        });
+      }
+      
+      return searchResult;
+    }
+  });
+  
+  if (!vitalCheck.ok) {
+    // Try to escape if in danger
+    await ctx.safety.escapeHole();
+    return fail('Mining aborted - low health');
+  }
+  
+  return ok('Mining complete');
+};
+```
+
+#### Complex Pathfinding with Retries
+```javascript
+// reliable-navigation.js
+module.exports = async function(ctx) {
+  const { Vec3, ok, fail } = ctx;
+  const target = new Vec3(100, 64, 100);
+  
+  // Navigate with timeout and retries
+  const result = await ctx.flow.retryBudget(
+    async () => await ctx.flow.withTimeout(
+      async () => await ctx.actions.navigate.goto(target),
+      30000,
+      'Navigate to target'
+    ),
+    {
+      maxAttempts: 3,
+      baseDelayMs: 5000,
+      shouldRetry: (error) => !error.includes('unreachable')
+    }
+  );
+  
+  return result.ok 
+    ? ok(`Reached target after ${result.attempts} attempts`)
+    : fail(result.error);
+};
+```
+
+#### Using Watchers
+```javascript
+// wait-for-day.js
+module.exports = async function(ctx) {
+  const { ok } = ctx;
+  
+  // Wait for daytime
+  const result = await ctx.watch.until(
+    async () => {
+      const time = await ctx.world.time();
+      return time.isDay;
+    },
+    {
+      checkInterval: 2000,
+      timeoutMs: 240000, // 4 minutes max
+      description: 'Waiting for sunrise'
+    }
+  );
+  
+  if (result.ok) {
+    await ctx.actions.chat('Good morning!');
+  }
+  
+  return ok('Day has arrived');
+};
+```
+
+### Program Capabilities
+
+Programs must declare capabilities to access bot functions:
+
+- **move** - Basic movement (step, moveCardinal)
+- **pathfind** - Advanced pathfinding (goto, navigate)  
+- **dig** - Break and mine blocks
+- **place** - Place blocks in the world
+- **craft** - Craft items and manage crafting table
+- **inventory** - Access and manage inventory
+- **attack** - Combat actions
+- **chat** - Send chat messages
+- **screenshot** - Take screenshots
+- **events** - Listen to game events
+
+### Program Arguments
+
+Pass arguments to programs using JSON:
+
+```bash
+# Simple arguments
+./mineflare program exec collector.js --args '{"item":"oak_log","count":10}'
+
+# Complex arguments
+./mineflare program exec builder.js --args '{
+  "structure": "house",
+  "position": {"x": 100, "y": 64, "z": 100},
+  "materials": ["oak_planks", "cobblestone"]
+}'
+```
+
+### Resource Budgets
+
+Programs have resource budgets to prevent abuse:
+
+- **Per-minute limits**: Prevent rapid operations
+- **Total limits**: Cap total operations per execution
+- **Capability-based**: Only tracked for enabled capabilities
+
+Default limits can be configured in the configuration file.
+
 ## Typical Workflow
 
 1. **Start the server daemon:**

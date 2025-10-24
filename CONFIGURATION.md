@@ -35,6 +35,46 @@ The configuration is organized into sections:
 - `performance.maxEventsHistory` - Maximum events to keep in history (default: 10000)
 - `performance.screenshotQuality` - Screenshot JPEG quality 1-100 (default: 85)
 
+### Program System Configuration
+- `programs.storageDir` - Directory for storing registered programs (default: '.mineflare/programs')
+- `programs.defaultTimeout` - Default timeout for program execution in ms (default: 900000)
+- `programs.maxConcurrent` - Maximum concurrent program executions (default: 3)
+- `programs.sandboxTimeout` - Sandbox execution timeout in ms (default: 900000)
+- `programs.enableDryRun` - Enable dry-run simulation mode (default: true)
+- `programs.defaultCapabilities` - Default capabilities for programs (default: ['move', 'pathfind'])
+
+#### Resource Budget Limits
+- `programs.budgets.perMinute` - Per-minute operation limits
+  - `move: 60` - Maximum movements per minute
+  - `dig: 20` - Maximum block dig operations per minute
+  - `place: 20` - Maximum block placements per minute
+  - `craft: 10` - Maximum crafting operations per minute
+  - `attack: 30` - Maximum attack operations per minute
+  - `screenshot: 5` - Maximum screenshots per minute
+  - `inventory: 30` - Maximum inventory operations per minute
+
+- `programs.budgets.total` - Total operation limits for entire program
+  - `move: 1000` - Maximum total movements
+  - `dig: 500` - Maximum total dig operations
+  - `place: 500` - Maximum total placements
+  - `craft: 100` - Maximum total crafts
+  - `attack: 300` - Maximum total attacks
+  - `screenshot: 50` - Maximum total screenshots
+  - `inventory: 500` - Maximum total inventory operations
+
+#### SDK Capabilities
+Programs can request specific capabilities that grant access to bot functions:
+- `move` - Basic movement (forward, back, left, right)
+- `pathfind` - Advanced navigation and pathfinding
+- `dig` - Breaking and mining blocks
+- `place` - Placing blocks in the world
+- `craft` - Crafting items
+- `inventory` - Managing inventory
+- `attack` - Combat actions
+- `chat` - Sending chat messages
+- `screenshot` - Taking screenshots
+- `events` - Listening to game events
+
 ## Configuration Files
 
 Configuration is stored in `.mineflare/config.json` in your project directory. This file contains all profiles and settings.
