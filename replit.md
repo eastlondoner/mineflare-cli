@@ -193,6 +193,14 @@ The project includes a comprehensive E2E testing framework with **zero mocks**:
   - Updated src/mineflare.js and src/cli.js to eliminate warnings in CLI output
   - Fixed all E2E test files to suppress warnings during test execution
   - Created comprehensive no-warnings test suite to detect future issues (8/8 passing)
+- 2025-10-24: Implemented single-instance enforcement for Mineflare server
+  - Prevents multiple server instances from running simultaneously
+  - Checks both PID file and port availability before starting
+  - Automatically cleans up stale PID files from crashed processes
+  - Tracks PID for both daemon and foreground modes
+  - Added --force flag to override existing instances
+  - Properly handles cleanup on SIGINT/SIGTERM signals
+  - Provides clear error messages with suggested actions
 
 ## User Preferences
 None specified yet.
