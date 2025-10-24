@@ -152,9 +152,23 @@ serverCmd
       const serverPath = path.join(__dirname, 'server.js');
       
       console.log('Starting bot server as daemon...');
-      const child = spawn(process.execPath, [serverPath], {
+      
+      // Use bun to run the server script
+      const bunPath = 'bun';
+      const child = spawn(bunPath, [serverPath], {
         detached: true,
-        stdio: 'ignore'
+        stdio: 'ignore',
+        env: {
+          ...process.env,
+          MINEFLARE_SERVER_PORT: serverConfig.server.port.toString(),
+          MC_HOST: serverConfig.minecraft.host,
+          MC_PORT: serverConfig.minecraft.port.toString(),
+          MC_USERNAME: serverConfig.minecraft.username,
+          MC_VERSION: serverConfig.minecraft.version,
+          MC_AUTH: serverConfig.minecraft.auth,
+          ENABLE_VIEWER: serverConfig.viewer.enabled.toString(),
+          VIEWER_PORT: serverConfig.viewer.port.toString()
+        }
       });
       
       child.unref();
