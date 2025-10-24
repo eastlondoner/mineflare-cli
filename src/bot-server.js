@@ -45,8 +45,18 @@ class MinecraftBotServer {
     // Clean up old bot instance
     if (this.bot) {
       try {
-        // Remove all listeners to prevent memory leaks
-        this.bot.removeAllListeners();
+        // Remove all listeners to prevent memory leaks - check if function exists first
+        if (this.bot.removeAllListeners && typeof this.bot.removeAllListeners === 'function') {
+          // Only remove specific event listeners, not all
+          const events = ['spawn', 'death', 'kicked', 'error', 'health', 'chat', 'message', 'entityHurt', 'entitySwingArm'];
+          events.forEach(event => {
+            try {
+              this.bot.removeAllListeners(event);
+            } catch (e) {
+              // Silently ignore if specific event removal fails
+            }
+          });
+        }
         
         // End the connection if it exists
         if (this.bot._client && !this.bot._client.ended) {
@@ -95,6 +105,8 @@ class MinecraftBotServer {
     });
 
     this.bot.once('spawn', async () => {
+      // Track spawn time to detect when bot spawns already dead
+      this.spawnTime = Date.now();
       this.logEvent('spawn', { position: this.bot.entity.position });
       
       if (config.enableViewer !== false) {
@@ -129,17 +141,33 @@ class MinecraftBotServer {
       // Add automatic respawn after death to prevent death loop
       console.log('[BOT] Died, attempting to respawn...');
       
-      // Clear any control states immediately
-      this.bot.clearControlStates();
-      
-      // Clear digging state safely
-      if (this.bot.targetDigBlock) {
+      // Skip control state clearing if bot just spawned (within 1 second of connection)
+      // This prevents crashes when bot connects while already dead on server
+      const timeSinceSpawn = Date.now() - (this.spawnTime || 0);
+      if (timeSinceSpawn > 1000) {
+        // Only clear control states if bot has been alive for more than 1 second
+        // This avoids issues when bot spawns in death state
         try {
-          this.bot.stopDigging();
+          if (this.bot.clearControlStates && typeof this.bot.clearControlStates === 'function') {
+            this.bot.clearControlStates();
+          }
         } catch (err) {
-          console.log('[BOT] Error stopping digging on death:', err.message);
+          console.log('[BOT] Error clearing control states on death:', err.message);
         }
-        this.bot.targetDigBlock = null;
+        
+        // Clear digging state safely
+        if (this.bot.targetDigBlock) {
+          try {
+            if (this.bot.stopDigging && typeof this.bot.stopDigging === 'function') {
+              this.bot.stopDigging();
+            }
+          } catch (err) {
+            console.log('[BOT] Error stopping digging on death:', err.message);
+          }
+          this.bot.targetDigBlock = null;
+        }
+      } else {
+        console.log('[BOT] Skipping control state cleanup (spawned dead)');
       }
       
       // Set up respawn tracking
