@@ -61,7 +61,8 @@ serverCmd
   .description('Start the bot server')
   .option('-d, --daemon', 'Run as background daemon')
   .option('--profile <name>', 'Use specific configuration profile')
-  .action((options) => {
+  .option('-f, --force', 'Force start even if another instance is detected')
+  .action(async (options) => {
     // Switch to profile if specified
     if (options.profile) {
       try {
@@ -75,6 +76,68 @@ serverCmd
     
     // Get configuration and set environment variables for backward compatibility
     const serverConfig = configManager.get();
+    
+    // Check if server is already running
+    const pidFile = path.join(process.cwd(), 'mineflare.pid');
+    
+    // Check for existing daemon process
+    if (fs.existsSync(pidFile)) {
+      const pid = parseInt(fs.readFileSync(pidFile, 'utf8'));
+      try {
+        // Check if process is still running
+        process.kill(pid, 0);
+        
+        if (!options.force) {
+          console.error(`✗ Mineflare server is already running (PID: ${pid})`);
+          console.error(`  Use 'mineflare server stop' to stop it first`);
+          console.error(`  Or use --force flag to override`);
+          process.exit(1);
+        } else {
+          console.log(`Warning: Overriding existing instance (PID: ${pid})`);
+          try {
+            process.kill(pid);
+            fs.unlinkSync(pidFile);
+            console.log(`  Stopped previous instance`);
+          } catch (e) {
+            console.log(`  Could not stop previous instance: ${e.message}`);
+          }
+        }
+      } catch (e) {
+        // Process is not running, clean up stale PID file
+        console.log('Cleaning up stale PID file...');
+        fs.unlinkSync(pidFile);
+      }
+    }
+    
+    // Check if port is already in use
+    const net = require('net');
+    const checkPort = (port) => {
+      return new Promise((resolve) => {
+        const server = net.createServer();
+        server.once('error', (err) => {
+          if (err.code === 'EADDRINUSE') {
+            resolve(false);
+          } else {
+            resolve(true);
+          }
+        });
+        server.once('listening', () => {
+          server.close();
+          resolve(true);
+        });
+        server.listen(port);
+      });
+    };
+    
+    const portAvailable = await checkPort(serverConfig.server.port);
+    if (!portAvailable && !options.force) {
+      console.error(`✗ Port ${serverConfig.server.port} is already in use`);
+      console.error(`  Another Mineflare instance or different application may be running`);
+      console.error(`  Use 'mineflare server status' to check`);
+      console.error(`  Or use --force flag to attempt to start anyway`);
+      process.exit(1);
+    }
+    
     process.env.MINEFLARE_SERVER_PORT = serverConfig.server.port;
     process.env.MC_HOST = serverConfig.minecraft.host;
     process.env.MC_PORT = serverConfig.minecraft.port;
@@ -96,12 +159,11 @@ serverCmd
       
       child.unref();
       
-      const pidFile = path.join(process.cwd(), 'mineflare.pid');
       fs.writeFileSync(pidFile, child.pid.toString());
       
-      console.log(`Bot server started as daemon (PID: ${child.pid})`);
-      console.log(`PID saved to: ${pidFile}`);
-      console.log(`Server running at: http://localhost:${serverConfig.server.port}`);
+      console.log(`✓ Bot server started as daemon (PID: ${child.pid})`);
+      console.log(`  PID saved to: ${pidFile}`);
+      console.log(`  Server running at: http://localhost:${serverConfig.server.port}`);
       process.exit(0);
     } else {
       console.log('Starting bot server...');
