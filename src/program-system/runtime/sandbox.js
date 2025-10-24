@@ -162,26 +162,38 @@ class ProgramSandbox {
             microtaskMode: 'afterEvaluate'
           });
           
-          // Check for module.exports pattern
-          const exported = this.contextObject.module?.exports;
-          const programDef = exported || result;
+          // Store the result in the context for access
+          this.contextObject.__programResult = result;
           
-          // If it's a function (old module.exports pattern), execute it
-          if (typeof programDef === 'function') {
-            Promise.resolve(programDef(programContext))
-              .then(resolve)
-              .catch(reject);
-          } 
-          // If the script returns a program definition, run it
-          else if (programDef && typeof programDef.run === 'function') {
-            programDef.run(programContext)
-              .then(resolve)
-              .catch(reject);
-          } 
-          // Otherwise, return the result as-is
-          else {
-            resolve(result);
-          }
+          // Execute the program within the sandbox context
+          const executeCode = `
+            (async function() {
+              const programDef = globalThis.__programResult || globalThis.module?.exports;
+              
+              if (typeof programDef === 'function') {
+                // Old module.exports pattern
+                return await programDef(globalThis.__programContext);
+              } else if (programDef && typeof programDef.run === 'function') {
+                // defineProgram pattern
+                return await programDef.run(globalThis.__programContext);
+              } else {
+                // Return raw result if not a program
+                return programDef;
+              }
+            })()
+          `;
+          
+          // Store the context in the sandbox
+          this.contextObject.__programContext = programContext;
+          
+          // Execute the program's run method within the sandbox
+          const runScript = new vm.Script(executeCode);
+          const executionResult = runScript.runInContext(this.context);
+          
+          // Handle the promise result
+          Promise.resolve(executionResult)
+            .then(resolve)
+            .catch(reject);
         } catch (error) {
           reject(error);
         }

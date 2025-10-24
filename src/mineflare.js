@@ -843,29 +843,42 @@ programCmd
         console.log('Simulation completed:');
         console.log(JSON.stringify(result, null, 2));
       } else {
-        // Real execution
-        const MinecraftBotServer = require('./bot-server');
-        const botServer = new MinecraftBotServer();
-        
-        // Note: In real usage, we'd get the existing bot server instance
-        // For now, we'll create a temporary registry
-        const ProgramRegistry = require('./program-system/registry');
-        const registry = new ProgramRegistry(configManager);
-        
-        // Add and run the program
-        const programName = `temp_${Date.now()}`;
-        await registry.add(programName, source, { capabilities });
-        
-        const result = await registry.run(botServer, programName, args, {
+        // Real execution - use the API to execute on the running server
+        const response = await api.post('/program/exec', {
+          source,
+          capabilities,
+          args,
           timeout: parseInt(options.timeout),
           seed: parseInt(options.seed)
         });
         
-        console.log('Program executed successfully:');
-        console.log(JSON.stringify(result, null, 2));
+        const result = response.data;
         
-        // Clean up temp program
-        await registry.remove(programName);
+        // Display execution results
+        if (result.logs && result.logs.length > 0) {
+          console.log('[PROGRAM] Execution logs:');
+          result.logs.forEach(log => {
+            const timestamp = new Date(log.timestamp).toISOString();
+            console.log(`  [${timestamp}] [${log.level.toUpperCase()}] ${log.message}`);
+            if (log.args && log.args.length > 0) {
+              console.log('    Args:', ...log.args);
+            }
+          });
+        }
+        
+        if (result.success) {
+          console.log('[PROGRAM] Execution completed successfully');
+          if (result.result) {
+            console.log('[PROGRAM] Result:', JSON.stringify(result.result, null, 2));
+          }
+        } else {
+          console.log('[PROGRAM] Execution failed:', result.error);
+          if (result.details) {
+            console.log('[PROGRAM] Details:', JSON.stringify(result.details, null, 2));
+          }
+        }
+        
+        console.log(`[PROGRAM] Duration: ${result.duration}ms`);
       }
     } catch (error) {
       console.error('Error:', error.message);

@@ -38,7 +38,7 @@ class ProgramRunner {
     
     try {
       // Check bot connection using unified method
-      if (!this.botServer.isConnected || !this.botServer.isConnected()) {
+      if (!this.botServer || !this.botServer.isConnected()) {
         throw new ProgramError(
           ErrorCode.BOT_DISCONNECTED,
           'Bot is not connected to server'
