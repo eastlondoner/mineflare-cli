@@ -384,8 +384,13 @@ class ProgramSandbox {
       });
       
       // Check for module.exports pattern
+      // Only use module.exports if it's been explicitly set (not empty object)
       const exported = testSandbox.contextObject.module?.exports;
-      const programDef = exported || result;
+      const hasExports = exported && Object.keys(exported).some(key => 
+        !['toString', 'valueOf', 'toLocaleString', 'hasOwnProperty', 'propertyIsEnumerable', 
+         'isPrototypeOf', '__defineGetter__', '__defineSetter__', '__lookupGetter__', '__lookupSetter__'].includes(key)
+      );
+      const programDef = hasExports ? exported : result;
       
       // If it's a function (old module.exports pattern), that's valid
       if (typeof programDef === 'function') {

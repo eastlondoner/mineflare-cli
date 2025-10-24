@@ -3,9 +3,8 @@
  * This program uses the new composable SDK functions
  */
 
-const sdk = require('../../src/program-system/sdk');
-
-module.exports = sdk.defineProgram({
+// SDK components are available globally - use them directly
+const program = defineProgram({
   name: 'test-sdk-enhancements',
   version: '1.0.0',
   capabilities: ['move', 'pathfind', 'dig', 'inventory'],
@@ -114,3 +113,6 @@ module.exports = sdk.defineProgram({
     });
   }
 });
+
+// Export the program (last expression is returned)
+program
