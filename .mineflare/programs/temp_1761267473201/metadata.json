@@ -1,0 +1,16 @@
+{
+  "name": "temp_1761267473201",
+  "version": "1.0.0",
+  "capabilities": [
+    "move",
+    "dig",
+    "place",
+    "look",
+    "inventory",
+    "craft"
+  ],
+  "defaults": {
+    "message": "Hello from Mineflare!"
+  },
+  "created": 1761267473206
+}
