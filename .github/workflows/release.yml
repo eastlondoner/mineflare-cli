@@ -148,26 +148,40 @@ jobs:
           VERSION=${GITHUB_REF#refs/tags/}
           SOURCE_ARCHIVE="mineflare-source-${VERSION}.tar.gz"
           
-          # Create tar.gz archive excluding unwanted files/directories
-          tar czf "${SOURCE_ARCHIVE}" \
-            --exclude='.git' \
-            --exclude='node_modules' \
-            --exclude='*.tar.gz' \
-            --exclude='artifacts' \
-            --exclude='release' \
-            --exclude='dist' \
-            --exclude='build' \
-            --exclude='*.exe' \
-            --exclude='mineflare-*' \
-            --exclude='.DS_Store' \
-            --exclude='*.log' \
-            --exclude='*.pid' \
-            --exclude='data/*' \
-            --exclude='screenshots/*' \
-            --exclude='*.bak' \
-            --exclude='*.tmp' \
-            --exclude='.env' \
-            .
+          # Build list of files and directories to include
+          FILES_TO_ARCHIVE=""
+          
+          # Add directories if they exist
+          [ -d "src" ] && FILES_TO_ARCHIVE="$FILES_TO_ARCHIVE src/"
+          [ -d "test" ] && FILES_TO_ARCHIVE="$FILES_TO_ARCHIVE test/"
+          [ -d ".github" ] && FILES_TO_ARCHIVE="$FILES_TO_ARCHIVE .github/"
+          [ -d "scripts" ] && FILES_TO_ARCHIVE="$FILES_TO_ARCHIVE scripts/"
+          
+          # Add specific files if they exist  
+          [ -f "package.json" ] && FILES_TO_ARCHIVE="$FILES_TO_ARCHIVE package.json"
+          [ -f "package-lock.json" ] && FILES_TO_ARCHIVE="$FILES_TO_ARCHIVE package-lock.json"
+          [ -f "bun.lockb" ] && FILES_TO_ARCHIVE="$FILES_TO_ARCHIVE bun.lockb"
+          [ -f "README.md" ] && FILES_TO_ARCHIVE="$FILES_TO_ARCHIVE README.md"
+          [ -f "RELEASE_GUIDE.md" ] && FILES_TO_ARCHIVE="$FILES_TO_ARCHIVE RELEASE_GUIDE.md"
+          [ -f "tsconfig.json" ] && FILES_TO_ARCHIVE="$FILES_TO_ARCHIVE tsconfig.json"
+          [ -f "LICENSE" ] && FILES_TO_ARCHIVE="$FILES_TO_ARCHIVE LICENSE"
+          [ -f "CONTRIBUTING.md" ] && FILES_TO_ARCHIVE="$FILES_TO_ARCHIVE CONTRIBUTING.md"
+          [ -f ".gitignore" ] && FILES_TO_ARCHIVE="$FILES_TO_ARCHIVE .gitignore"
+          
+          # Create archive with collected files
+          if [ -n "$FILES_TO_ARCHIVE" ]; then
+            tar czf "${SOURCE_ARCHIVE}" \
+              --exclude='node_modules' \
+              --exclude='.git' \
+              --exclude='*.log' \
+              --exclude='*.pid' \
+              --exclude='.env' \
+              --exclude='coverage' \
+              $FILES_TO_ARCHIVE
+          else
+            echo "Warning: No source files found to archive"
+            exit 1
+          fi
           
           # Generate checksum for source archive
           sha256sum "${SOURCE_ARCHIVE}" > "${SOURCE_ARCHIVE}.sha256"
