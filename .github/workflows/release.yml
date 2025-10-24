@@ -142,6 +142,42 @@ jobs:
           find artifacts -type f \( -name "*.tar.gz" -o -name "*.sha256" \) -exec mv {} release/ \;
           ls -la release/
 
+      - name: Create source code archive
+        run: |
+          # Get the version tag
+          VERSION=${GITHUB_REF#refs/tags/}
+          SOURCE_ARCHIVE="mineflare-source-${VERSION}.tar.gz"
+          
+          # Create tar.gz archive excluding unwanted files/directories
+          tar czf "${SOURCE_ARCHIVE}" \
+            --exclude='.git' \
+            --exclude='node_modules' \
+            --exclude='*.tar.gz' \
+            --exclude='artifacts' \
+            --exclude='release' \
+            --exclude='dist' \
+            --exclude='build' \
+            --exclude='*.exe' \
+            --exclude='mineflare-*' \
+            --exclude='.DS_Store' \
+            --exclude='*.log' \
+            --exclude='*.pid' \
+            --exclude='data/*' \
+            --exclude='screenshots/*' \
+            --exclude='*.bak' \
+            --exclude='*.tmp' \
+            --exclude='.env' \
+            .
+          
+          # Generate checksum for source archive
+          sha256sum "${SOURCE_ARCHIVE}" > "${SOURCE_ARCHIVE}.sha256"
+          
+          # Move to release directory
+          mv "${SOURCE_ARCHIVE}" "${SOURCE_ARCHIVE}.sha256" release/
+          
+          echo "Source archive created: ${SOURCE_ARCHIVE}"
+          ls -la release/
+
       - name: Extract version from tag
         id: get_version
         run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
@@ -168,6 +204,9 @@ jobs:
           #### macOS
           - **Apple Silicon (M1/M2/M3)**: \`mineflare-macos-arm64.tar.gz\`
           - **Intel Macs**: \`mineflare-macos-x64.tar.gz\`
+          
+          #### Source Code
+          - **Source Archive**: \`mineflare-source-${{ steps.get_version.outputs.VERSION }}.tar.gz\` (Complete source code)
           
           ### 🔧 Quick Start
           
