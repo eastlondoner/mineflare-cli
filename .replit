@@ -38,21 +38,17 @@ waitForPort = 25565
 name = "Bot Server"
 author = "agent"
 
-[workflows.workflow.metadata]
-outputType = "console"
-
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "cd /home/runner/workspace && ./mineflare server start"
+args = "cd /home/runner/workspace && bun src/server.js"
 waitForPort = 3000
+
+[workflows.workflow.metadata]
+outputType = "console"
 
 [[ports]]
 localPort = 3000
 externalPort = 3000
-
-[[ports]]
-localPort = 3001
-externalPort = 80
 
 [[ports]]
 localPort = 3100

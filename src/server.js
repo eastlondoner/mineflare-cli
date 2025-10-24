@@ -1,4 +1,5 @@
-const MinecraftBotServer = require('./bot-server');
+// Use the isolated bot server to prevent crashes
+const IsolatedBotServer = require('./bot-server-isolated');
 const configManager = require('./config/ConfigManager');
 
 // Get configuration from config manager (supports env var overrides)
@@ -17,13 +18,11 @@ const config = {
 
 const serverPort = fullConfig.server.port;
 
-const server = new MinecraftBotServer();
+const server = new IsolatedBotServer();
 server.start(config, serverPort);
 
 process.on('SIGINT', () => {
   console.log('Shutting down...');
-  if (server.bot) {
-    server.bot.quit();
-  }
+  // IsolatedBotServer handles shutdown internally
   process.exit(0);
 });

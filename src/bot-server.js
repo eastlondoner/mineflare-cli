@@ -79,10 +79,10 @@ class MinecraftBotServer {
     }
     
     // Wait a bit before reconnecting to let server clean up
-    setTimeout(() => {
+    setTimeout(async () => {
       if (this.config) {
         console.log('[BOT] Attempting to reconnect...');
-        this.setupBot(this.config);
+        await this.setupBot(this.config);
         this.isReconnecting = false;
         this.logEvent('reconnect', { timestamp: Date.now() });
       } else {
@@ -92,10 +92,11 @@ class MinecraftBotServer {
     }, 3000);
   }
 
-  setupBot(config) {
+  async setupBot(config) {
     // Store config for potential reconnection
     this.config = config;
     
+    // Create bot directly
     this.bot = mineflayer.createBot({
       host: config.host || 'localhost',
       port: config.port || 25565,
@@ -103,11 +104,57 @@ class MinecraftBotServer {
       version: config.version || false,
       auth: config.auth || 'offline'
     });
+    
+    console.log('[BOT] Bot created, applying death crash prevention patches...');
+    
+    // Patch the removeAllListeners method to prevent crashes
+    const originalRemoveAllListeners = this.bot.removeAllListeners;
+    this.bot.removeAllListeners = function(event) {
+      try {
+        // Check if _events is initialized before calling original
+        if (!this._events) {
+          console.log('[BOT] Skipping removeAllListeners - _events not initialized');
+          return this;
+        }
+        return originalRemoveAllListeners.call(this, event);
+      } catch (err) {
+        console.error('[BOT] Error in patched removeAllListeners:', err.message);
+        return this;
+      }
+    }.bind(this.bot);
+    
+    // Also patch the bot._client if it exists
+    if (this.bot._client) {
+      const originalClientRemoveAll = this.bot._client.removeAllListeners;
+      this.bot._client.removeAllListeners = function(event) {
+        try {
+          if (!this._events) {
+            console.log('[BOT] Skipping _client.removeAllListeners - _events not initialized');
+            return this;
+          }
+          return originalClientRemoveAll.call(this, event);
+        } catch (err) {
+          console.error('[BOT] Error in patched _client.removeAllListeners:', err.message);
+          return this;
+        }
+      }.bind(this.bot._client);
+    }
+    
+    // Track spawn and initialization state
+    this.spawnCompleted = false;
+    this.pendingDeathHandling = false;
+    this.isInitializing = true;
 
     this.bot.once('spawn', async () => {
       // Track spawn time to detect when bot spawns already dead
       this.spawnTime = Date.now();
       this.logEvent('spawn', { position: this.bot.entity.position });
+      
+      // Check if bot spawned dead (edge case that causes crashes)
+      if (this.bot.health === 0) {
+        console.log('[BOT] WARNING: Bot spawned already dead! Health is 0 on spawn.');
+        this.pendingDeathHandling = true;
+      }
       
       if (config.enableViewer !== false) {
         try {
@@ -122,6 +169,23 @@ class MinecraftBotServer {
           console.log('Continuing without viewer support.');
         }
       }
+      
+      // Mark spawn as completed and handle pending death after a delay
+      // This ensures the bot is fully initialized before handling death events
+      setTimeout(() => {
+        this.spawnCompleted = true;
+        this.isInitializing = false; // Mark initialization as complete
+        
+        // If bot spawned dead, handle it now that we're initialized
+        if (this.pendingDeathHandling) {
+          console.log('[BOT] Handling delayed death event (bot spawned dead)');
+          // Ensure bot is actually dead before handling
+          if (this.bot.health === 0) {
+            this.handleDeath();
+          }
+          this.pendingDeathHandling = false;
+        }
+      }, 1500); // Increased delay to ensure full initialization
     });
 
     this.bot.on('chat', (username, message) => {
@@ -135,91 +199,16 @@ class MinecraftBotServer {
       });
     });
 
+    // Wrap death event handler with spawn check
     this.bot.on('death', () => {
-      this.logEvent('death', { position: this.bot.entity.position });
-      
-      // Add automatic respawn after death to prevent death loop
-      console.log('[BOT] Died, attempting to respawn...');
-      
-      // Skip control state clearing if bot just spawned (within 1 second of connection)
-      // This prevents crashes when bot connects while already dead on server
-      const timeSinceSpawn = Date.now() - (this.spawnTime || 0);
-      if (timeSinceSpawn > 1000) {
-        // Only clear control states if bot has been alive for more than 1 second
-        // This avoids issues when bot spawns in death state
-        try {
-          if (this.bot.clearControlStates && typeof this.bot.clearControlStates === 'function') {
-            this.bot.clearControlStates();
-          }
-        } catch (err) {
-          console.log('[BOT] Error clearing control states on death:', err.message);
-        }
-        
-        // Clear digging state safely
-        if (this.bot.targetDigBlock) {
-          try {
-            if (this.bot.stopDigging && typeof this.bot.stopDigging === 'function') {
-              this.bot.stopDigging();
-            }
-          } catch (err) {
-            console.log('[BOT] Error stopping digging on death:', err.message);
-          }
-          this.bot.targetDigBlock = null;
-        }
-      } else {
-        console.log('[BOT] Skipping control state cleanup (spawned dead)');
+      // Prevent handling death before spawn completes
+      if (!this.spawnCompleted) {
+        console.log('[BOT] Death event fired before spawn completed - delaying handling');
+        this.pendingDeathHandling = true;
+        return;
       }
       
-      // Set up respawn tracking
-      let respawnSuccessful = false;
-      const respawnTimeout = setTimeout(() => {
-        if (!respawnSuccessful) {
-          console.log('[BOT] Respawn timeout - bot stuck, triggering reconnection...');
-          this.handleReconnect();
-        }
-      }, 5000); // 5 second timeout for respawn
-      
-      // Listen for successful respawn
-      const onRespawn = () => {
-        respawnSuccessful = true;
-        clearTimeout(respawnTimeout);
-        console.log('[BOT] Successfully respawned!');
-        this.logEvent('respawn_success', { timestamp: Date.now() });
-        // Clean up listener
-        this.bot.removeListener('spawn', onRespawn);
-      };
-      
-      this.bot.once('spawn', onRespawn);
-      
-      // Add a small delay then attempt respawn using proper API
-      setTimeout(() => {
-        try {
-          // Check if bot is still connected before trying to respawn
-          if (this.bot && this.bot._client && !this.bot._client.ended) {
-            // Use proper mineflayer respawn API
-            if (typeof this.bot.respawn === 'function') {
-              this.bot.respawn();
-              console.log('[BOT] Respawn method called');
-            } else {
-              // Fallback: send client command packet directly
-              this.bot._client.write('client_command', { action: 1 }); // 1 = respawn
-              console.log('[BOT] Respawn packet sent directly');
-            }
-            
-            this.logEvent('respawn_attempt', { timestamp: Date.now() });
-          } else {
-            console.log('[BOT] Bot disconnected after death, triggering reconnection...');
-            clearTimeout(respawnTimeout);
-            this.handleReconnect();
-          }
-        } catch (error) {
-          console.error('[BOT] Error during respawn attempt:', error);
-          this.logEvent('respawn_error', { error: error.message });
-          clearTimeout(respawnTimeout);
-          // If respawn fails, try to reconnect
-          this.handleReconnect();
-        }
-      }, 1000);
+      this.handleDeath();
     });
 
     this.bot.on('kicked', (reason) => {
@@ -266,6 +255,91 @@ class MinecraftBotServer {
         this.lastNearbyBlocks = nearbyBlocks;
       }
     });
+  }
+
+  // Centralized death handling to prevent crashes
+  handleDeath() {
+    try {
+      this.logEvent('death', { position: this.bot.entity ? this.bot.entity.position : null });
+      
+      console.log('[BOT] Died, attempting to respawn...');
+      
+      // Clear digging state safely if needed
+      if (this.bot.targetDigBlock) {
+        try {
+          // Just clear the reference without calling any mineflayer methods
+          this.bot.targetDigBlock = null;
+        } catch (err) {
+          console.log('[BOT] Error clearing dig block on death:', err.message);
+        }
+      }
+      
+      // Set up respawn tracking
+      let respawnSuccessful = false;
+      const respawnTimeout = setTimeout(() => {
+        if (!respawnSuccessful) {
+          console.log('[BOT] Respawn timeout - bot stuck, triggering reconnection...');
+          this.handleReconnect();
+        }
+      }, 5000); // 5 second timeout for respawn
+      
+      // Listen for successful respawn
+      const onRespawn = () => {
+        respawnSuccessful = true;
+        clearTimeout(respawnTimeout);
+        console.log('[BOT] Successfully respawned!');
+        this.logEvent('respawn_success', { timestamp: Date.now() });
+        
+        // Reset spawn tracking for next death
+        this.spawnCompleted = true;
+        this.pendingDeathHandling = false;
+        
+        // Clean up listener - but only if removeListener is safe to call
+        try {
+          if (this.bot && this.bot.removeListener && typeof this.bot.removeListener === 'function') {
+            this.bot.removeListener('spawn', onRespawn);
+          }
+        } catch (err) {
+          // Silently ignore listener removal errors
+        }
+      };
+      
+      this.bot.once('spawn', onRespawn);
+      
+      // Add a small delay then attempt respawn using proper API
+      setTimeout(() => {
+        try {
+          // Check if bot is still connected before trying to respawn
+          if (this.bot && this.bot._client && !this.bot._client.ended) {
+            // Use proper mineflayer respawn API
+            if (typeof this.bot.respawn === 'function') {
+              this.bot.respawn();
+              console.log('[BOT] Respawn method called');
+            } else {
+              // Fallback: send client command packet directly
+              this.bot._client.write('client_command', { action: 1 }); // 1 = respawn
+              console.log('[BOT] Respawn packet sent directly');
+            }
+            
+            this.logEvent('respawn_attempt', { timestamp: Date.now() });
+          } else {
+            console.log('[BOT] Bot disconnected after death, triggering reconnection...');
+            clearTimeout(respawnTimeout);
+            this.handleReconnect();
+          }
+        } catch (error) {
+          console.error('[BOT] Error during respawn attempt:', error);
+          this.logEvent('respawn_error', { error: error.message });
+          clearTimeout(respawnTimeout);
+          // If respawn fails, try to reconnect
+          this.handleReconnect();
+        }
+      }, 1000);
+    } catch (error) {
+      console.error('[BOT] Unexpected error in handleDeath:', error);
+      // Last resort: reconnect if death handling fails completely
+      this.handleReconnect();
+    }
   }
 
   setupRoutes() {
@@ -1326,13 +1400,14 @@ class MinecraftBotServer {
     return buffer.toString('base64');
   }
 
-  start(botConfig, port = 3000) {
-    this.setupBot(botConfig);
-    
+  async start(botConfig, port = 3000) {
     this.app.listen(port, () => {
       console.log(`Bot server listening on port ${port}`);
       console.log(`Connecting to Minecraft server: ${botConfig.host}:${botConfig.port}`);
     });
+    
+    // Setup bot after server is listening
+    await this.setupBot(botConfig);
   }
 }
 
