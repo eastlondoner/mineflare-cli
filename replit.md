@@ -201,6 +201,13 @@ The project includes a comprehensive E2E testing framework with **zero mocks**:
   - Added --force flag to override existing instances
   - Properly handles cleanup on SIGINT/SIGTERM signals
   - Provides clear error messages with suggested actions
+- 2025-10-24: Fixed critical program execution bug where CLI created new unconnected bot server instances
+  - CLI `program exec` now uses `/program/exec` API endpoint instead of creating new MinecraftBotServer
+  - Fixed VM context boundary issue where program's `run` method wasn't preserved across contexts
+  - Programs now execute within the sandbox context itself, maintaining proper isolation
+  - Resolved "Bot is not connected to server" errors that occurred despite bot being connected
+  - E2E tests confirm programs now execute on the connected bot server instance
+  - Note: SDK implementation issues (control.success) remain as separate bugs to address
 
 ## User Preferences
 None specified yet.
