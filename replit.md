@@ -75,7 +75,7 @@ All bot events are logged with timestamps:
 - health changes
 
 ### User Program System
-Mineflare now supports running user-submitted JavaScript programs in a secure, sandboxed environment:
+Mineflare now supports running user-submitted JavaScript programs in a secure, sandboxed environment with a powerful composable SDK:
 
 #### Features
 - **Secure VM Sandbox**: Programs run in isolated VM contexts using Bun's vm module
@@ -83,6 +83,7 @@ Mineflare now supports running user-submitted JavaScript programs in a secure, s
 - **Deterministic Execution**: Optional deterministic mode for reproducible results
 - **Resource Limits**: Rate limiting and operation budgets prevent abuse
 - **Program Management**: Register, list, run, and remove named programs
+- **Composable SDK**: "Lego brick" functions that make programs concise (10-20 lines)
 
 #### Program Commands
 - `mineflare program exec <file>` - Execute a program file immediately

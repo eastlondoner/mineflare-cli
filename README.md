@@ -326,6 +326,139 @@ The test server is configured with:
 
 See [test/e2e/README.md](test/e2e/README.md) for complete testing documentation.
 
+## User Program System
+
+Mineflare supports running user-submitted JavaScript programs in a secure, sandboxed environment with a powerful composable SDK.
+
+### Program Features
+- **Secure VM Sandbox** - Programs run in isolated VM contexts using Bun's vm module
+- **Capability-Based Security** - Programs must declare capabilities (move, dig, craft, etc.)
+- **Deterministic Execution** - Optional deterministic mode for reproducible results
+- **Resource Limits** - Rate limiting and operation budgets prevent abuse
+- **Composable SDK** - "Lego brick" functions that make programs concise (10-20 lines)
+
+### SDK Categories
+
+The SDK provides powerful utilities organized into logical groups:
+
+#### Flow Control
+- `withTimeout()` - Execute operations with time limits
+- `retryBudget()` - Retry with deterministic backoff
+- `parallel()` - Run operations concurrently
+- `transaction()` - Operations with rollback support
+
+#### Movement
+- `step()` - Single safe step with configurable checks
+- `moveCardinal()` - Move in compass directions
+- `followPath()` - Follow waypoint sequences
+- `strafe()`, `jumpTo()`, `circleAround()` - Advanced movement
+
+#### Safety & Recovery
+- `escapeHole()` - Escape from pits/depressions
+- `safeStep()` - Move with comprehensive hazard checks
+- `monitorVitals()` - Monitor health and food
+- `createSafeZone()` - Build safe area with lighting
+
+#### Watchers
+- `until()` - Wait for condition to become true
+- `blockAppears()` - Wait for block appearance
+- `entityAppears()` - Wait for entity spawn
+- `watchValue()` - Monitor value changes
+
+#### Search Patterns
+- `expandSquare()` - Expanding square search
+- `spiral()` - Spiral outward search
+- `bug2()` - Boundary-following algorithm
+- `randomWalk()` - Random exploration
+
+#### Geometry
+- `nearestFirst()` - Deterministic nearest-first sorting
+- Distance metrics: `manhattan()`, `chebyshev()`, `euclidean()`
+- Vector operations: add, subtract, scale, normalize, dot, cross
+- Shape generators: `getLine()`, `getCircle()`, `getDisc()`
+
+### Program Commands
+
+```bash
+# Execute a program file immediately
+mineflare program exec examples/programs/smart-miner.js
+
+# Register a named program
+mineflare program add examples/programs/smart-miner.js --name smart-miner
+
+# Run a registered program
+mineflare program run smart-miner
+
+# List all programs
+mineflare program ls
+
+# Remove a program
+mineflare program rm smart-miner
+
+# Cancel running program
+mineflare program cancel <runId>
+
+# Check program status
+mineflare program status <runId>
+
+# View execution history
+mineflare program history
+```
+
+### Example Programs
+
+See the `examples/programs/` directory for example automation scripts:
+- `simple-move.js` - Basic movement demonstration
+- `find-and-craft-table.js` - Find wood and craft table (12 lines!)
+- `safe-explorer.js` - Safe exploration with automatic hole escape
+- `smart-miner.js` - Advanced mining with monitoring and safety
+- `resource-gatherer.js` - Resource collection automation
+- `builder.js` - Construction automation
+- `farmer.js` - Automated farming
+- `guard.js` - Area protection
+
+### Writing Programs
+
+Programs use the Mineflare SDK API:
+
+```javascript
+const { defineProgram, ok, fail } = globalThis.mineflareSDK;
+
+const program = defineProgram({
+  name: 'my-program',
+  version: '1.0.0',
+  capabilities: ['move', 'dig', 'craft'],
+  
+  async run(ctx) {
+    const { nav, interact, craft, log, control } = ctx;
+    
+    // Find and mine diamond
+    const found = await ctx.search.expandSquare({
+      radius: 100,
+      at: async () => {
+        const blocks = await ctx.world.scanBlocks({ 
+          kinds: ['diamond_ore'], 
+          radius: 16 
+        });
+        return blocks.length ? ok(blocks[0]) : fail('no diamonds');
+      }
+    });
+    
+    if (!found.ok) return control.fail('No diamonds found');
+    
+    // Navigate and mine
+    await nav.goto(found.value.value.pos);
+    await interact.mine({ pos: found.value.value.pos });
+    
+    return control.success({ message: 'Diamond mined!' });
+  }
+});
+
+program;
+```
+
+See [PROGRAM_SYSTEM.md](docs/PROGRAM_SYSTEM.md) for complete documentation.
+
 ## License
 
 ISC
