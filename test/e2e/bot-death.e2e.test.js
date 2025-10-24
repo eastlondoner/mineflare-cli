@@ -21,9 +21,11 @@ const TEST_CONFIG = {
 };
 
 const API_BASE = `http://localhost:${TEST_CONFIG.BOT_SERVER_PORT}`;
+// Disable proxy to avoid url.parse() deprecation warning (DEP0169)
 const apiClient = axios.create({
   baseURL: API_BASE,
-  timeout: TEST_CONFIG.API_TIMEOUT
+  timeout: TEST_CONFIG.API_TIMEOUT,
+  proxy: false  // Add this to prevent deprecation warning
 });
 
 describe('E2E: Bot Death Handling', () => {

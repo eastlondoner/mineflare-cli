@@ -130,9 +130,11 @@ module.exports = defineProgram({
   }
   
   async function waitForServer(retries = 30) {
+    // Disable proxy to avoid url.parse() deprecation warning (DEP0169)
     const client = axios.create({
       baseURL: `http://localhost:${serverPort}`,
-      timeout: 1000
+      timeout: 1000,
+      proxy: false  // Add this to prevent deprecation warning
     });
     
     for (let i = 0; i < retries; i++) {

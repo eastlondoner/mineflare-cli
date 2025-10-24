@@ -21,9 +21,11 @@ describe('E2E: Program Execution', () => {
     serverProcess = await startBotServer();
     
     // Setup API client
+    // Disable proxy to avoid url.parse() deprecation warning (DEP0169)
     apiClient = axios.create({
       baseURL: `http://localhost:${serverPort}`,
-      timeout: 5000
+      timeout: 5000,
+      proxy: false  // Add this to prevent deprecation warning
     });
     
     // Wait for server to be ready

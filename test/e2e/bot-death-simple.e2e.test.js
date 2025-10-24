@@ -5,9 +5,11 @@
 
 const axios = require('axios');
 
+// Disable proxy to avoid url.parse() deprecation warning (DEP0169)
 const apiClient = axios.create({
   baseURL: 'http://localhost:3000',
-  timeout: 5000
+  timeout: 5000,
+  proxy: false  // Add this to prevent deprecation warning
 });
 
 describe('E2E: Bot Death Bug - Simplified', () => {

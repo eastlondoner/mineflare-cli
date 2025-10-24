@@ -15,7 +15,10 @@ const API_BASE = config.api.baseUrl;
 
 const api = axios.create({
   baseURL: API_BASE,
-  timeout: config.server.timeout
+  timeout: config.server.timeout,
+  // Disable proxy to avoid url.parse() deprecation warning (DEP0169)
+  // from proxy-from-env dependency
+  proxy: false
 });
 
 // Helper function to display configuration in table format
