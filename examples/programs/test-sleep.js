@@ -1,5 +1,5 @@
 // Test program to verify sleep function works in sandbox
-const { defineProgram, sleep } = globalThis.mineflareSDK;
+// SDK components (defineProgram, sleep) are available globally from mineflareSDK
 
 const program = defineProgram({
   name: 'test-sleep',
@@ -47,4 +47,4 @@ const program = defineProgram({
 });
 
 // Export the program
-program;
+program

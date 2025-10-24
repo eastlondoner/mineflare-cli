@@ -1,5 +1,5 @@
 // Find first log and craft table - 12 lines of actual logic!
-const { defineProgram, ok, fail } = globalThis.mineflareSDK;
+// SDK components (defineProgram, ok, fail) are available globally from mineflareSDK
 
 const program = defineProgram({
   name: 'find-and-craft-table',
@@ -46,4 +46,4 @@ const program = defineProgram({
   }
 });
 
-program;
+program

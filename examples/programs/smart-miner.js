@@ -1,5 +1,5 @@
 // Smart mining with resource monitoring and automatic safety - super concise!
-const { defineProgram, ok, fail } = globalThis.mineflareSDK;
+// SDK components are available globally - use them directly
 
 const program = defineProgram({
   name: 'smart-miner',
@@ -101,4 +101,5 @@ const program = defineProgram({
   }
 });
 
-program;
+// Export the program (last expression is returned)
+program

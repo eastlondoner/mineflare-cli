@@ -47,5 +47,5 @@ const program = defineProgram({
   }
 });
 
-// Export the program
-program;
+// Export the program (last expression is returned)
+program

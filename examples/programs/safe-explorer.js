@@ -1,5 +1,5 @@
 // Safe exploration with automatic hole escape - ultra-concise!
-const { defineProgram } = globalThis.mineflareSDK;
+// SDK component (defineProgram) is available globally from mineflareSDK
 
 const program = defineProgram({
   name: 'safe-explorer',
@@ -58,4 +58,4 @@ const program = defineProgram({
   }
 });
 
-program;
+program

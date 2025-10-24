@@ -1,5 +1,5 @@
 // Program to craft wooden planks from logs
-const { defineProgram } = globalThis.mineflareSDK;
+// SDK component (defineProgram) is available globally from mineflareSDK
 
 const program = defineProgram({
   name: 'craft-planks',
@@ -69,4 +69,4 @@ const program = defineProgram({
 });
 
 // Export the program
-program;
+program

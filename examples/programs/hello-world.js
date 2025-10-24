@@ -1,5 +1,5 @@
 // Simple hello world program to test basic functionality
-const { defineProgram, ok, fail } = globalThis.mineflareSDK;
+// SDK components are available globally - use them directly
 
 const program = defineProgram({
   name: 'hello-world',
@@ -24,5 +24,5 @@ const program = defineProgram({
   }
 });
 
-// Export the program
-program;
+// Export the program (last expression is returned)
+program

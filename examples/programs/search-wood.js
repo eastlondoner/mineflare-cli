@@ -88,4 +88,4 @@ const program = defineProgram({
 });
 
 // Export the program
-program;
+program
