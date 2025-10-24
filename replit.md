@@ -188,6 +188,11 @@ The project includes a comprehensive E2E testing framework with **zero mocks**:
   - Full batch command support for all new movement types
   - Created example batch files: batch-relative-movement.json, batch-navigation.json, batch-exploration.json
   - API supports both absolute and relative movement/look operations
+- 2025-10-24: Fixed axios url.parse() deprecation warning (DEP0169)
+  - Added proxy: false configuration to all axios.create() calls
+  - Updated src/mineflare.js and src/cli.js to eliminate warnings in CLI output
+  - Fixed all E2E test files to suppress warnings during test execution
+  - Created comprehensive no-warnings test suite to detect future issues (8/8 passing)
 
 ## User Preferences
 None specified yet.
