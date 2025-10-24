@@ -1,0 +1,14 @@
+{
+  "name": "temp_1761268813138",
+  "version": "1.0.0",
+  "capabilities": [
+    "move",
+    "dig",
+    "place",
+    "look",
+    "inventory",
+    "craft"
+  ],
+  "defaults": {},
+  "created": 1761268813142
+}
