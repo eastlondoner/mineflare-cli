@@ -7,6 +7,11 @@ const fs = require('fs');
 const configManager = require('./config/ConfigManager');
 const Table = require('cli-table3');
 
+function resolvePidFile() {
+  const customPath = process.env.MINEFLARE_PID_FILE;
+  return path.resolve(customPath ? customPath : path.join(process.cwd(), 'mineflare.pid'));
+}
+
 const program = new Command();
 
 // Get API base URL from config
@@ -78,7 +83,7 @@ serverCmd
     const serverConfig = configManager.get();
     
     // Check if server is already running
-    const pidFile = path.join(process.cwd(), 'mineflare.pid');
+    const pidFile = resolvePidFile();
     
     // Check for existing daemon process
     if (fs.existsSync(pidFile)) {
@@ -222,7 +227,7 @@ serverCmd
   .command('stop')
   .description('Stop the bot server daemon')
   .action(() => {
-    const pidFile = path.join(process.cwd(), 'mineflare.pid');
+      const pidFile = resolvePidFile();
     
     if (!fs.existsSync(pidFile)) {
       console.error('No daemon running (PID file not found)');
@@ -244,7 +249,7 @@ serverCmd
   .command('status')
   .description('Check server status')
   .action(async () => {
-    const pidFile = path.join(process.cwd(), 'mineflare.pid');
+    const pidFile = resolvePidFile();
     
     if (fs.existsSync(pidFile)) {
       const pid = parseInt(fs.readFileSync(pidFile, 'utf8'));
@@ -436,7 +441,12 @@ program
       const response = await api.get('/health');
       console.log(JSON.stringify(response.data, null, 2));
     } catch (error) {
-      console.error('Error:', error.message);
+      const reason = error.response?.data?.error || error.message;
+      console.error('Error: Bot server is not running or unreachable');
+      if (reason && !reason.includes('Bot server is not running')) {
+        console.error('Reason:', reason);
+      }
+      process.exit(1);
     }
   });
 
@@ -448,7 +458,9 @@ program
       const response = await api.get('/state');
       console.log(JSON.stringify(response.data, null, 2));
     } catch (error) {
-      console.error('Error:', error.message);
+      console.error('Error: Failed to fetch bot state');
+      console.error('Reason:', error.response?.data?.error || error.message);
+      process.exit(1);
     }
   });
 
@@ -460,7 +472,9 @@ program
       const response = await api.get('/inventory');
       console.log(JSON.stringify(response.data, null, 2));
     } catch (error) {
-      console.error('Error:', error.message);
+      console.error('Error: Failed to fetch inventory');
+      console.error('Reason:', error.response?.data?.error || error.message);
+      process.exit(1);
     }
   });
 

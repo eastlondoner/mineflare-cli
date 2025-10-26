@@ -4,15 +4,16 @@
  * Expected: Bot should respawn or reconnect gracefully
  */
 
+const { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } = require('bun:test');
 const { spawn } = require('child_process');
 const axios = require('axios');
-const fs = require('fs').promises;
+const fs = require('fs');
 const path = require('path');
 
 // Test configuration
 const TEST_CONFIG = {
   MC_HOST: process.env.E2E_MC_HOST || 'localhost',
-  MC_PORT: process.env.E2E_MC_PORT || 8099,
+  MC_PORT: process.env.E2E_MC_PORT || 25565,
   MC_USERNAME: process.env.E2E_MC_USERNAME || 'DeathTestBot',
   BOT_SERVER_PORT: process.env.E2E_BOT_SERVER_PORT || 3001,
   API_TIMEOUT: 30000,
@@ -73,6 +74,65 @@ describe('E2E: Bot Death Handling', () => {
     });
   };
 
+  const pidFile = path.join(process.cwd(), '.e2e-bot-death.pid');
+
+  const removePidFile = () => {
+    if (fs.existsSync(pidFile)) {
+      try {
+        fs.unlinkSync(pidFile);
+      } catch (err) {
+        console.warn('Failed to remove PID file:', err.message);
+      }
+    }
+  };
+
+  const stopBotServer = async () => {
+    if (botServerProcess && botServerProcess.exitCode === null && !botServerProcess.killed) {
+      botServerProcess.kill('SIGTERM');
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      if (botServerProcess.exitCode === null && !botServerProcess.killed) {
+        botServerProcess.kill('SIGKILL');
+      }
+    }
+    botServerProcess = null;
+    removePidFile();
+  };
+
+  const startBotServer = async () => {
+    if (botServerProcess && botServerProcess.exitCode === null && !botServerProcess.killed) {
+      return;
+    }
+
+    await stopBotServer();
+
+    const env = {
+      ...process.env,
+      MC_HOST: TEST_CONFIG.MC_HOST,
+      MC_PORT: TEST_CONFIG.MC_PORT,
+      MC_USERNAME: TEST_CONFIG.MC_USERNAME,
+      MINEFLARE_SERVER_PORT: TEST_CONFIG.BOT_SERVER_PORT,
+      MINEFLARE_PID_FILE: pidFile,
+      MC_VERSION: '1.21.8',
+      MC_AUTH: 'offline',
+      ENABLE_VIEWER: 'false'
+    };
+
+    console.log('Starting bot server on port', TEST_CONFIG.BOT_SERVER_PORT);
+    botServerProcess = spawn('bun', ['run', 'src/server.js'], {
+      env,
+      stdio: ['ignore', 'pipe', 'pipe']
+    });
+
+    captureProcessOutput(botServerProcess);
+
+    botServerProcess.on('exit', (code, signal) => {
+      console.log(`Bot server exited with code ${code} and signal ${signal}`);
+    });
+
+    await waitForBotConnection();
+    console.log('Bot server started and connected');
+  };
+
   // Helper to kill the bot in-game
   const killBot = async (method = 'fall') => {
     console.log(`Killing bot using ${method} method...`);
@@ -126,60 +186,32 @@ describe('E2E: Bot Death Handling', () => {
     }
   };
 
+  beforeAll(async () => {
+    await startBotServer();
+  }, { timeout: 60000 });
+
   beforeEach(async () => {
     console.log('\\n=== Starting Bot Death Test ===');
     originalLogs = [];
     errorLogs = [];
-    
-    // Start bot server with test configuration
-    const env = {
-      ...process.env,
-      MC_HOST: TEST_CONFIG.MC_HOST,
-      MC_PORT: TEST_CONFIG.MC_PORT,
-      MC_USERNAME: TEST_CONFIG.MC_USERNAME,
-      MINEFLARE_SERVER_PORT: TEST_CONFIG.BOT_SERVER_PORT,
-      MC_VERSION: '1.21.8',
-      MC_AUTH: 'offline',
-      ENABLE_VIEWER: 'false'
-    };
-
-    console.log('Starting bot server on port', TEST_CONFIG.BOT_SERVER_PORT);
-    botServerProcess = spawn('bun', ['src/server.js'], {
-      env,
-      stdio: ['ignore', 'pipe', 'pipe']
-    });
-
-    captureProcessOutput(botServerProcess);
-
-    // Monitor for crash
-    botServerProcess.on('exit', (code, signal) => {
-      console.log(`Bot server exited with code ${code} and signal ${signal}`);
-    });
-
-    // Wait for bot to connect
-    await waitForBotConnection();
-    console.log('Bot server started and connected');
-  }, 30000);
+    if (!botServerProcess || botServerProcess.killed || botServerProcess.exitCode !== null) {
+      await startBotServer();
+    }
+  }, { timeout: 10000 });
 
   afterEach(async () => {
     console.log('Cleaning up test...');
+    await stopBotServer();
     
-    // Kill bot server process if still running
-    if (botServerProcess && !botServerProcess.killed) {
-      botServerProcess.kill('SIGTERM');
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      if (!botServerProcess.killed) {
-        botServerProcess.kill('SIGKILL');
-      }
-    }
-    
-    // Save logs for analysis
     if (errorLogs.length > 0) {
       console.log('\\n=== Error Logs ===');
       errorLogs.forEach(log => console.error(log));
     }
-  });
+  }, { timeout: 15000 });
+
+  afterAll(async () => {
+    await stopBotServer();
+  }, { timeout: 30000 });
 
   describe('Death Bug Reproduction', () => {
     it('should crash with TypeError when bot dies from fall damage', async () => {

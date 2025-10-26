@@ -41,8 +41,8 @@ describe('E2E: Simple Real Server Verification', () => {
         reject(new Error('Connection timeout'));
       });
       
-      console.log(`Attempting real connection to localhost:${MC_PORT}...`);
-      client.connect(MC_PORT, 'localhost');
+      console.log(`Attempting real connection to 127.0.0.1:${MC_PORT}...`);
+      client.connect(MC_PORT, '127.0.0.1');
     });
   });
   
@@ -70,7 +70,7 @@ describe('E2E: Simple Real Server Verification', () => {
           reject(new Error(`Connection ${i + 1} timeout`));
         });
         
-        client.connect(MC_PORT, 'localhost');
+        client.connect(MC_PORT, '127.0.0.1');
       }));
     }
     
@@ -104,7 +104,7 @@ describe('E2E: Simple Real Server Verification', () => {
           reject(new Error('Timeout'));
         });
         
-        client.connect(MC_PORT, 'localhost');
+        client.connect(MC_PORT, '127.0.0.1');
       });
     }
     

@@ -57,7 +57,8 @@ describe('E2E: Server Lifecycle', () => {
         ], {
           env: {
             ...process.env,
-            MINEFLARE_PORT: port.toString(),
+            MINEFLARE_SERVER_PORT: port.toString(),
+            MINEFLARE_PID_FILE: path.join(tempDir, `fg-${port}.pid`),
             NODE_ENV: 'test'
           },
           stdio: E2E_CONFIG.VERBOSE ? 'inherit' : 'pipe'
@@ -96,7 +97,7 @@ describe('E2E: Server Lifecycle', () => {
       
       // Start server in daemon mode
       const { stdout, stderr } = await execAsync(
-        `MINEFLARE_PORT=${port} MINEFLARE_PID_FILE=${pidFile} bun run src/mineflare.js server start --daemon`
+        `MINEFLARE_SERVER_PORT=${port} MINEFLARE_PID_FILE=${pidFile} bun run src/mineflare.js server start --daemon`
       );
       
       // Verify PID file was created
@@ -144,7 +145,8 @@ describe('E2E: Server Lifecycle', () => {
       ], {
         env: {
           ...process.env,
-          MINEFLARE_PORT: port.toString(),
+          MINEFLARE_SERVER_PORT: port.toString(),
+          MINEFLARE_PID_FILE: path.join(tempDir, `conflict-${port}.pid`),
           NODE_ENV: 'test'
         },
         stdio: 'pipe'
@@ -170,7 +172,8 @@ describe('E2E: Server Lifecycle', () => {
       ], {
         env: {
           ...process.env,
-          MINEFLARE_PORT: port.toString(),
+          MINEFLARE_SERVER_PORT: port.toString(),
+          MINEFLARE_PID_FILE: path.join(tempDir, `conflict-${port}-2.pid`),
           NODE_ENV: 'test'
         },
         stdio: 'pipe'
@@ -201,6 +204,7 @@ describe('E2E: Server Lifecycle', () => {
         env: {
           ...process.env,
           MINEFLARE_SERVER_PORT: port.toString(),
+          MINEFLARE_PID_FILE: path.join(tempDir, `env-${port}.pid`),
           MC_HOST: 'test.server.com',
           MC_USERNAME: 'ConfigTestBot',
           MC_VERSION: '1.20.1',
@@ -243,7 +247,8 @@ describe('E2E: Server Lifecycle', () => {
       ], {
         env: {
           ...process.env,
-          MINEFLARE_PORT: port.toString(),
+          MINEFLARE_SERVER_PORT: port.toString(),
+          MINEFLARE_PID_FILE: path.join(tempDir, `sigterm-${port}.pid`),
           NODE_ENV: 'test'
         },
         stdio: 'pipe'

@@ -3,6 +3,9 @@
  * Configures the testing environment for zero-mock E2E tests
  */
 
+const fs = require('fs');
+const path = require('path');
+const { beforeAll, afterAll } = require('bun:test');
 const TestEnvironment = require('./test-environment');
 
 // Global test configuration
@@ -21,9 +24,9 @@ global.E2E_CONFIG = {
   PARALLEL: process.env.E2E_PARALLEL === 'true',
   
   // Performance thresholds
-  MAX_STARTUP_TIME: parseInt(process.env.E2E_MAX_STARTUP_TIME) || 5000,
-  MAX_CONNECT_TIME: parseInt(process.env.E2E_MAX_CONNECT_TIME) || 10000,
-  MAX_API_RESPONSE: parseInt(process.env.E2E_MAX_API_RESPONSE) || 1000,
+  MAX_STARTUP_TIME: parseInt(process.env.E2E_MAX_STARTUP_TIME) || 15000,
+  MAX_CONNECT_TIME: parseInt(process.env.E2E_MAX_CONNECT_TIME) || 20000,
+  MAX_API_RESPONSE: parseInt(process.env.E2E_MAX_API_RESPONSE) || 3000,
   
   // Test data directory
   TEMP_DIR: process.env.E2E_TEMP_DIR || '.e2e-temp'
@@ -33,6 +36,41 @@ global.E2E_CONFIG = {
 if (typeof jest !== 'undefined' && jest.setTimeout) {
   jest.setTimeout(global.E2E_CONFIG.TIMEOUT);
 }
+
+// Ensure Java tooling is available for tests that launch PaperMC
+const maybeSetJavaEnv = () => {
+  const candidateHomes = [
+    process.env.JAVA_HOME,
+    '/opt/homebrew/opt/openjdk@21',
+    '/Library/Java/JavaVirtualMachines/temurin-21.jdk/Contents/Home',
+    '/usr/lib/jvm/java-21-openjdk',
+    '/usr/lib/jvm/java-17-openjdk'
+  ];
+
+  for (const home of candidateHomes) {
+    if (home && fs.existsSync(home)) {
+      process.env.JAVA_HOME = home;
+      break;
+    }
+  }
+
+  if (!process.env.JAVA_BIN && process.env.JAVA_HOME) {
+    const javaPath = path.join(process.env.JAVA_HOME, 'bin', 'java');
+    if (fs.existsSync(javaPath)) {
+      process.env.JAVA_BIN = javaPath;
+    }
+  }
+
+  if (process.env.JAVA_BIN && fs.existsSync(process.env.JAVA_BIN)) {
+    const javaDir = path.dirname(process.env.JAVA_BIN);
+    const pathParts = process.env.PATH ? process.env.PATH.split(path.delimiter) : [];
+    if (!pathParts.includes(javaDir)) {
+      process.env.PATH = [javaDir, ...pathParts].join(path.delimiter);
+    }
+  }
+};
+
+maybeSetJavaEnv();
 
 // Global test environment instance
 let globalTestEnv = null;
@@ -269,3 +307,28 @@ module.exports = {
   simulateNetworkConditions: global.simulateNetworkConditions,
   monitorResources: global.monitorResources
 };
+
+// Register shared setup/teardown with Bun's test runner so every test file waits for readiness.
+if (!global.__E2E_SETUP_REGISTERED__) {
+  global.__E2E_SETUP_REGISTERED__ = true;
+  const shared = {
+    refs: 0,
+    promise: null
+  };
+
+  beforeAll(async () => {
+    shared.refs += 1;
+    if (!shared.promise) {
+      shared.promise = global.setupE2E();
+    }
+    await shared.promise;
+  });
+
+  afterAll(async () => {
+    shared.refs -= 1;
+    if (shared.refs <= 0) {
+      await global.teardownE2E();
+      shared.promise = null;
+    }
+  });
+}

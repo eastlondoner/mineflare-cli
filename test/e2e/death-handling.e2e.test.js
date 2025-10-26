@@ -1,4 +1,4 @@
-const { describe, it, expect, beforeAll, afterAll } = require('@jest/globals');
+const { describe, it, expect, beforeAll, afterAll } = require('bun:test');
 const { spawn } = require('child_process');
 const path = require('path');
 const { promisify } = require('util');
@@ -11,7 +11,7 @@ const apiClient = axios.create({
   baseURL: 'http://localhost:3000',
   timeout: 10000,
   proxy: false
-});
+}, { timeout: 60000 });
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -19,8 +19,11 @@ describe('E2E: Death Handling', () => {
   let botServerProcess;
   let minecraftServerProcess;
   const mineflareCmd = path.join(process.cwd(), 'mineflare');
+  const javaBin = (process.env.JAVA_BIN && fs.existsSync(process.env.JAVA_BIN))
+    ? process.env.JAVA_BIN
+    : 'java';
   
-  beforeAll(async () => {
+beforeAll(async () => {
     console.log('Starting test environment...');
     
     // Kill any existing servers
@@ -33,11 +36,11 @@ describe('E2E: Death Handling', () => {
     const mcServerDir = path.join(process.cwd(), 'minecraft-server');
     if (fs.existsSync(path.join(mcServerDir, 'paper-1.21.8.jar'))) {
       console.log('Starting Minecraft server...');
-      minecraftServerProcess = spawn('java', ['-Xmx1024M', '-Xms1024M', '-jar', 'paper-1.21.8.jar', 'nogui'], {
+      minecraftServerProcess = spawn(javaBin, ['-Xmx1024M', '-Xms1024M', '-jar', 'paper-1.21.8.jar', 'nogui'], {
         cwd: mcServerDir,
         stdio: ['pipe', 'pipe', 'pipe']
       });
-      
+    
       // Create stdin pipe
       fs.writeFileSync(path.join(mcServerDir, 'server.stdin'), '');
       
@@ -47,8 +50,13 @@ describe('E2E: Death Handling', () => {
     
     // Start bot server
     console.log('Starting bot server...');
+    const pidFile = path.join(process.cwd(), '.e2e-death-handler.pid');
     botServerProcess = spawn(mineflareCmd, ['server', 'start'], {
-      env: { ...process.env },
+      env: {
+        ...process.env,
+        JAVA_BIN: javaBin,
+        MINEFLARE_PID_FILE: pidFile
+      },
       stdio: 'pipe'
     });
     
@@ -58,7 +66,7 @@ describe('E2E: Death Handling', () => {
     // Verify bot is connected
     const health = await apiClient.get('/health');
     expect(health.data.botConnected).toBe(true);
-  }, 30000);
+  });
   
   afterAll(async () => {
     console.log('Cleaning up test environment...');
@@ -72,7 +80,7 @@ describe('E2E: Death Handling', () => {
       minecraftServerProcess.kill('SIGTERM');
       await sleep(2000);
     }
-  });
+  }, { timeout: 30000 });
   
   describe('Death and Respawn', () => {
     it('should handle death and respawn correctly', async () => {
@@ -97,8 +105,9 @@ describe('E2E: Death Handling', () => {
       
       // Check events for death
       const events = await apiClient.get('/events?since=0');
-      const deathEvents = events.data.filter(e => e.type === 'death');
-      const respawnEvents = events.data.filter(e => e.type === 'spawn' || e.type === 'respawn_success');
+      const eventList = events.data?.events || [];
+      const deathEvents = eventList.filter(e => e.type === 'death');
+      const respawnEvents = eventList.filter(e => e.type === 'spawn' || e.type === 'respawn_success');
       
       console.log('Death events:', deathEvents.length);
       console.log('Respawn events:', respawnEvents.length);
