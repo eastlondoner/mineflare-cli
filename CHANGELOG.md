@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.8] - 2025-10-26
+
+### Fixed
+- Restored program execution support when running the isolated bot server by proxying state snapshots and command execution through the IPC layer.
+- Added graceful error messaging for world-scan helpers that still require a full mineflayer instance.
+- Documented the isolated-mode program limitations in the README.
+
 ## [1.0.0] - 2025-10-23
 
 ### Added

@@ -229,7 +229,7 @@ process.on('message', (msg) => {
           bot.chat(params.message);
           return { sent: true };
           
-        case 'dig':
+        case 'dig': {
           if (params.x === undefined || params.y === undefined || params.z === undefined) {
             throw new Error('x, y, z coordinates required');
           }
@@ -237,11 +237,113 @@ process.on('message', (msg) => {
           if (!blockToDig) throw new Error('No block at position');
           await bot.dig(blockToDig);
           return { dug: true, block: blockToDig.name };
+        }
+        
+        case 'place': {
+          if (
+            params.x === undefined ||
+            params.y === undefined ||
+            params.z === undefined ||
+            !params.blockName
+          ) {
+            throw new Error('x, y, z coordinates and blockName required');
+          }
+          
+          const blockName = params.blockName;
+          const itemToPlace = bot.inventory.items().find(i => i.name === blockName);
+          if (!itemToPlace) throw new Error(`No ${blockName} in inventory`);
+          
+          await bot.equip(itemToPlace, 'hand');
+          const refBlock = bot.blockAt(new Vec3(params.x, params.y, params.z));
+          
+          if (!refBlock || refBlock.name === 'air') {
+            throw new Error('Cannot place block: reference block must be solid');
+          }
+          
+          await bot.placeBlock(refBlock, new Vec3(0, 1, 0));
+          return { placed: true, block: blockName };
+        }
+        
+        case 'craft': {
+          if (!params.item) throw new Error('item name required');
+          
+          const itemId = bot.registry.itemsByName[params.item]?.id;
+          if (!itemId) throw new Error(`Unknown item: ${params.item}`);
+          
+          const count = params.count || 1;
+          const recipes = bot.recipesFor(itemId, null, count, params.craftingTable);
+          if (!recipes || recipes.length === 0) {
+            throw new Error(`No recipes available for ${params.item}`);
+          }
+          
+          const recipe = recipes[0];
+          
+          if (recipe.requiresTable && !params.craftingTable) {
+            const craftingTableBlock = bot.findBlock({
+              matching: bot.registry.blocksByName.crafting_table?.id,
+              maxDistance: 6
+            });
+            
+            if (!craftingTableBlock) {
+              throw new Error('Recipe requires crafting table but none found nearby');
+            }
+            
+            await bot.craft(recipe, count, craftingTableBlock);
+          } else {
+            await bot.craft(recipe, count, null);
+          }
+          
+          return { crafted: params.item, count };
+        }
+        
+        case 'equip': {
+          if (!params.item) throw new Error('item name required');
+          const itemToEquip = bot.inventory.items().find(i => i.name === params.item);
+          if (!itemToEquip) throw new Error(`No ${params.item} in inventory`);
+          await bot.equip(itemToEquip, params.destination || 'hand');
+          return { equipped: params.item };
+        }
           
         case 'wait':
           const duration = params.duration || 1000;
           await new Promise(resolve => setTimeout(resolve, duration));
           return { waited: duration };
+          
+        case 'goto': {
+          if (
+            params.x === undefined ||
+            params.y === undefined ||
+            params.z === undefined
+          ) {
+            throw new Error('x, y, z coordinates required');
+          }
+          
+          const goal = new Vec3(params.x, params.y, params.z);
+          const distance = bot.entity.position.distanceTo(goal);
+          if (distance > 100) {
+            throw new Error('Target too far away (max 100 blocks)');
+          }
+          
+          const dx = params.x - bot.entity.position.x;
+          const dz = params.z - bot.entity.position.z;
+          const targetYaw = Math.atan2(-dx, dz);
+          bot.look(targetYaw, bot.entity.pitch, true);
+          
+          const timeout = Math.min(Math.max(distance * 250, 1000), params.timeout || 15000);
+          bot.setControlState('forward', true);
+          await new Promise(resolve => setTimeout(resolve, timeout));
+          bot.clearControlStates();
+          
+          return {
+            moved: true,
+            target: {
+              x: goal.x,
+              y: goal.y,
+              z: goal.z
+            },
+            duration_ms: timeout
+          };
+        }
           
         default:
           throw new Error(`Unknown instruction type: ${type}`);

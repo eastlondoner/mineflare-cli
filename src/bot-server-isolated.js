@@ -1,6 +1,7 @@
 const express = require('express');
-const { fork } = require('child_process');
 const path = require('path');
+const { ProgramError, ErrorCode } = require('./program-system/sdk/types');
+const Vec3 = require('vec3');
 
 class IsolatedBotServer {
   constructor() {
@@ -12,7 +13,13 @@ class IsolatedBotServer {
       connected: false,
       spawned: false,
       position: null,
+      orientation: {
+        yaw: 0,
+        pitch: 0
+      },
       health: 20,
+      food: 20,
+      oxygen: 20,
       isDead: false
     };
     this.events = [];
@@ -624,17 +631,13 @@ class IsolatedBotServer {
           });
         }
         
-        // Create minimal bot proxy for program execution
-        const botProxy = {
-          entity: { position: this.botState.position },
-          health: this.botState.health,
-          isConnected: () => this.botState.connected
-        };
+        const snapshot = await this.fetchProgramSnapshot();
+        const programAdapter = this.createProgramAdapter(snapshot);
         
         const ProgramRunner = require('./program-system/runner');
         const runId = `run-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
         
-        const runner = new ProgramRunner(botProxy, {
+        const runner = new ProgramRunner(programAdapter, {
           runId,
           programName: 'temp_' + Date.now(),
           source,
@@ -651,7 +654,7 @@ class IsolatedBotServer {
       } catch (error) {
         res.status(500).json({
           success: false,
-          error: error.message
+          error: error.message || 'Program execution failed'
         });
       }
     });
@@ -721,6 +724,206 @@ class IsolatedBotServer {
     }
   }
 
+  requestBotResponse(command, responseType, data = {}, timeoutMs = 10000) {
+    if (!this.botProcess || this.botProcess.killed) {
+      return Promise.reject(new Error('Bot process not running'));
+    }
+
+    return new Promise((resolve, reject) => {
+      const cleanup = () => {
+        clearTimeout(timeout);
+        this.botProcess.removeListener('message', listener);
+      };
+
+      const listener = (msg) => {
+        if (msg.type === responseType) {
+          cleanup();
+          resolve(msg);
+        }
+      };
+
+      const timeout = setTimeout(() => {
+        cleanup();
+        reject(new Error(`${command} request timed out`));
+      }, timeoutMs);
+
+      this.botProcess.on('message', listener);
+
+      try {
+        this.botProcess.send({ type: 'command', command, ...data });
+      } catch (err) {
+        cleanup();
+        reject(err);
+      }
+    });
+  }
+
+  async fetchProgramSnapshot() {
+    if (!this.botState.connected) {
+      throw new ProgramError(
+        ErrorCode.BOT_DISCONNECTED,
+        'Bot is not connected to server'
+      );
+    }
+
+    try {
+      const [stateMsg, inventoryMsg] = await Promise.all([
+        this.requestBotResponse('get_state', 'state_response', {}, 5000),
+        this.requestBotResponse('get_inventory', 'inventory_response', {}, 5000)
+      ]);
+
+      if (stateMsg?.state) {
+        this.botState.position = stateMsg.state.position
+          ? new Vec3(
+              stateMsg.state.position.x,
+              stateMsg.state.position.y,
+              stateMsg.state.position.z
+            )
+          : null;
+        this.botState.orientation = {
+          yaw: stateMsg.state?.orientation?.yaw ?? 0,
+          pitch: stateMsg.state?.orientation?.pitch ?? 0
+        };
+        this.botState.health = stateMsg.state?.health?.current ?? 20;
+        this.botState.food = stateMsg.state?.food?.current ?? 20;
+        this.botState.oxygen = stateMsg.state?.oxygen?.current ?? 20;
+      }
+
+      return {
+        state: stateMsg?.state || {},
+        inventory: inventoryMsg?.items || []
+      };
+    } catch (error) {
+      throw new ProgramError(
+        ErrorCode.OPERATION_FAILED,
+        `Unable to collect bot snapshot: ${error.message}`
+      );
+    }
+  }
+
+  createProgramAdapter(snapshot) {
+    const server = this;
+    const state = snapshot.state || {};
+    const orientation = state.orientation || {};
+    const environment = state.environment || {};
+    const velocity = state.velocity || {};
+    const inventoryItems = snapshot.inventory || [];
+
+    const safePosition = state.position
+      ? new Vec3(state.position.x, state.position.y, state.position.z)
+      : new Vec3(0, 63, 0);
+
+    const timeOfDayEstimate = environment.time_of_day === 'Day'
+      ? 6000
+      : environment.time_of_day === 'Night'
+        ? 18000
+        : 0;
+
+    const inventoryAPI = {
+      items: () => inventoryItems.map(item => ({
+        name: item.name,
+        count: item.count,
+        slot: item.slot,
+        displayName: item.displayName
+      }))
+    };
+
+    const botProxy = {
+      isConnected: () => server.botState.connected,
+      executeInstruction: async (instruction) => {
+        return server.executeProgramInstruction(instruction);
+      },
+      bot: {
+        entity: {
+          position: safePosition,
+          yaw: orientation.yaw ?? 0,
+          pitch: orientation.pitch ?? 0,
+          onGround: environment.on_ground ?? false,
+          isInWater: environment.in_water ?? false,
+          isInLava: environment.in_lava ?? false,
+          velocity: velocity
+        },
+        health: state.health?.current ?? server.botState.health,
+        food: state.food?.current ?? server.botState.food,
+        oxygen: state.oxygen?.current ?? server.botState.oxygen,
+        inventory: inventoryAPI,
+        time: {
+          timeOfDay: timeOfDayEstimate,
+          isDay: state.environment?.time_of_day === 'Day'
+        },
+        blockAt: (pos) => {
+          throw new ProgramError(
+            ErrorCode.OPERATION_FAILED,
+            'blockAt is not yet available in isolated bot mode'
+          );
+        }
+      }
+    };
+
+    return botProxy;
+  }
+
+  async executeProgramInstruction(instruction) {
+    if (!this.botState.connected) {
+      throw new ProgramError(
+        ErrorCode.BOT_DISCONNECTED,
+        'Bot is not connected to server'
+      );
+    }
+
+    const typeTimeouts = {
+      dig: 15000,
+      craft: 15000,
+      place: 10000,
+      equip: 8000,
+      goto: 20000,
+      wait: (instruction?.params?.duration || 1000) + 2000
+    };
+
+    const inferredTimeout = typeTimeouts[instruction?.type] || 10000;
+    const timeoutMs = Math.max(
+      5000,
+      instruction?.params?.timeout || inferredTimeout
+    );
+
+    try {
+      const response = await this.requestBotResponse(
+        'batch',
+        'batch_response',
+        { instructions: [instruction], stopOnError: true },
+        timeoutMs
+      );
+
+      const results = response?.results?.results || [];
+      const [firstResult] = results;
+
+      if (!firstResult) {
+        throw new ProgramError(
+          ErrorCode.OPERATION_FAILED,
+          'No response received for instruction'
+        );
+      }
+
+      if (!firstResult.success) {
+        throw new ProgramError(
+          ErrorCode.OPERATION_FAILED,
+          firstResult.error || 'Instruction failed'
+        );
+      }
+
+      return firstResult.response;
+    } catch (error) {
+      if (error instanceof ProgramError) {
+        throw error;
+      }
+
+      throw new ProgramError(
+        ErrorCode.OPERATION_FAILED,
+        `Failed to execute instruction '${instruction?.type}': ${error.message}`
+      );
+    }
+  }
+
   logEvent(type, data) {
     const event = {
       type,
@@ -770,7 +973,9 @@ class IsolatedBotServer {
         case 'spawned':
           this.botState.spawned = true;
           this.botState.connected = true;
-          this.botState.position = msg.position;
+          this.botState.position = msg.position
+            ? new Vec3(msg.position.x, msg.position.y, msg.position.z)
+            : null;
           this.botState.health = msg.health;
           this.botState.isDead = msg.health === 0;
           this.logEvent('spawn', { position: msg.position, health: msg.health });
@@ -789,7 +994,9 @@ class IsolatedBotServer {
         case 'respawned':
           this.botState.isDead = false;
           this.botState.health = 20;
-          this.botState.position = msg.position;
+          this.botState.position = msg.position
+            ? new Vec3(msg.position.x, msg.position.y, msg.position.z)
+            : null;
           this.logEvent('respawn', { position: msg.position });
           break;
           

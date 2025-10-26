@@ -337,6 +337,11 @@ Mineflare supports running user-submitted JavaScript programs in a secure, sandb
 - **Resource Limits** - Rate limiting and operation budgets prevent abuse
 - **Composable SDK** - "Lego brick" functions that make programs concise (10-20 lines)
 
+> **Isolated Bot Mode Support**  
+> The program system now works when the bot runs in the fault-tolerant isolated process (default).  
+> Simple programs (logging, configuration, basic actions) execute fully, and command-oriented capabilities (move, dig, look, wait, craft, place, equip) proxy through the IPC layer.  
+> World-inspection helpers that require direct `blockAt` access (e.g. advanced scan/search utilities) currently raise a clear `blockAt is not yet available in isolated bot mode` error; use batch jobs or extend the IPC proxy if you need them today.
+
 ### SDK Categories
 
 The SDK provides powerful utilities organized into logical groups:
