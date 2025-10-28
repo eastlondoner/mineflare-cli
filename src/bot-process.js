@@ -1,12 +1,15 @@
 const mineflayer = require('mineflayer');
+const Vec3 = require('vec3');
+const { pathfinder: pathfinderPlugin, Movements, goals } = require('mineflayer-pathfinder');
+const minecraftData = require('minecraft-data');
 
 // This runs in a separate process to isolate crashes
 process.on('message', (msg) => {
   if (msg.type === 'start') {
     const config = msg.config;
-    
+
     console.log('[BOT-PROCESS] Starting bot in isolated process...');
-    
+
     const bot = mineflayer.createBot({
       host: config.host || 'localhost',
       port: config.port || 25565,
@@ -14,18 +17,34 @@ process.on('message', (msg) => {
       version: config.version || false,
       auth: config.auth || 'offline'
     });
-    
+
+    bot.loadPlugin(pathfinderPlugin);
+    let movementProfile = null;
+
+    const setupMovements = () => {
+      try {
+        const mcData = minecraftData(bot.version || config.version || '1.21.8');
+        movementProfile = new Movements(bot, mcData);
+        bot.pathfinder.setMovements(movementProfile);
+      } catch (error) {
+        console.error('[BOT-PROCESS] Failed to initialize pathfinder movements:', error.message);
+      }
+    };
+
+    bot.once('spawn', setupMovements);
+    bot.on('respawn', setupMovements);
+
     // Track if we've spawned to prevent early death handling
     let hasSpawned = false;
     let deathHandlerRegistered = false;
-    
+
     // Patch removeAllListeners to prevent crash
     const originalRemoveAllListeners = bot.removeAllListeners;
     bot.removeAllListeners = function(event) {
       try {
         if (!this._events) {
-          console.log('[BOT-PROCESS] Skipping removeAllListeners - _events not initialized');
-          return this;
+          this._events = Object.create(null);
+          this._eventsCount = 0;
         }
         return originalRemoveAllListeners.call(this, event);
       } catch (err) {
@@ -33,13 +52,13 @@ process.on('message', (msg) => {
         return this;
       }
     }.bind(bot);
-    
+
     // Handle spawn
     bot.once('spawn', () => {
       console.log('[BOT-PROCESS] Bot spawned');
       hasSpawned = true;
       process.send({ type: 'spawned', position: bot.entity.position, health: bot.health });
-      
+
       // Check if spawned dead
       if (bot.health === 0) {
         console.log('[BOT-PROCESS] WARNING: Bot spawned already dead!');
@@ -49,14 +68,14 @@ process.on('message', (msg) => {
           }
         }, 1000);
       }
-      
+
       // Register death handler immediately to catch all death events
       if (!deathHandlerRegistered) {
         console.log('[BOT-PROCESS] Registering death handler immediately');
         bot.on('death', () => {
           console.log('[BOT-PROCESS] Bot died');
           process.send({ type: 'died' });
-          
+
           // Auto-respawn after a short delay
           setTimeout(() => {
             if (bot.health === 0) {
@@ -68,36 +87,41 @@ process.on('message', (msg) => {
         deathHandlerRegistered = true;
       }
     });
-    
+
     // Handle respawn
     bot.on('respawn', () => {
       console.log('[BOT-PROCESS] Bot respawned');
       process.send({ type: 'respawned', position: bot.entity.position });
     });
-    
+
     // Handle errors
     bot.on('error', (err) => {
       console.error('[BOT-PROCESS] Bot error:', err.message);
       process.send({ type: 'error', error: err.message });
     });
-    
+
     // Handle kicked
     bot.on('kicked', (reason) => {
       console.log('[BOT-PROCESS] Bot kicked:', reason);
       process.send({ type: 'kicked', reason });
     });
-    
+
     // Handle end
     bot.on('end', (reason) => {
       console.log('[BOT-PROCESS] Bot connection ended:', reason);
       process.send({ type: 'ended', reason });
     });
-    
+
     // Handle chat messages
     bot.on('chat', (username, message) => {
       process.send({ type: 'chat', username, message });
     });
-    
+
+    const toSafeNumber = (value, fallback = 0) => {
+      const num = Number(value);
+      return Number.isFinite(num) ? num : fallback;
+    };
+
     // Helper function to create screenshot
     async function captureScreenshot() {
       try {
@@ -141,46 +165,44 @@ process.on('message', (msg) => {
     // Helper function to execute batch instructions
     async function executeInstruction(instruction) {
       const { type, params = {} } = instruction;
-      const Vec3 = require('vec3');
-      
       switch (type) {
         case 'move':
           const { x, y, z, sprint, relative } = params;
           if (relative) {
             const { forward, backward, left, right, up, down } = relative;
             bot.clearControlStates();
-            
+
             let targetPosition = bot.entity.position.clone();
             const yaw = bot.entity.yaw;
-            
+
             if (forward > 0 || backward > 0) {
               const distance = forward > 0 ? forward : -backward;
               targetPosition.x += -Math.sin(yaw) * distance;
               targetPosition.z += Math.cos(yaw) * distance;
             }
-            
+
             if (left > 0 || right > 0) {
               const distance = right > 0 ? right : -left;
               targetPosition.x += Math.cos(yaw) * distance;
               targetPosition.z += Math.sin(yaw) * distance;
             }
-            
+
             if (up > 0 || down > 0) {
               targetPosition.y += up > 0 ? up : -down;
             }
-            
+
             if (sprint) bot.setControlState('sprint', true);
-            
+
             const timeout = Math.max(1000, Math.abs(forward || backward || left || right || 0) * 250);
             if (forward > 0) bot.setControlState('forward', true);
             if (backward > 0) bot.setControlState('back', true);
             if (left > 0) bot.setControlState('left', true);
             if (right > 0) bot.setControlState('right', true);
             if (up > 0) bot.setControlState('jump', true);
-            
+
             await new Promise(resolve => setTimeout(resolve, timeout));
             bot.clearControlStates();
-            
+
             return { moved: true, duration_ms: timeout };
           } else {
             if (x !== undefined) bot.setControlState('forward', x > 0);
@@ -191,11 +213,11 @@ process.on('message', (msg) => {
             if (sprint !== undefined) bot.setControlState('sprint', sprint);
             return { moved: true };
           }
-          
+
         case 'stop':
           bot.clearControlStates();
           return { stopped: true };
-          
+
         case 'look':
           const { yaw: lookYaw, pitch: lookPitch, relative: relLook, cardinal } = params;
           if (relLook) {
@@ -203,7 +225,7 @@ process.on('message', (msg) => {
             const currentYaw = bot.entity.yaw;
             const currentPitch = bot.entity.pitch;
             const newYaw = currentYaw + (yaw_delta || 0) * Math.PI / 180;
-            const newPitch = Math.max(-Math.PI/2, Math.min(Math.PI/2, 
+            const newPitch = Math.max(-Math.PI/2, Math.min(Math.PI/2,
               currentPitch + (pitch_delta || 0) * Math.PI / 180));
             bot.look(newYaw, newPitch, true);
             return { looked: true, turned: { yaw_degrees: yaw_delta || 0, pitch_degrees: pitch_delta || 0 } };
@@ -223,12 +245,12 @@ process.on('message', (msg) => {
             return { looked: true };
           }
           throw new Error('Provide yaw/pitch, relative turn, or cardinal direction');
-          
+
         case 'chat':
           if (!params.message) throw new Error('message required');
           bot.chat(params.message);
           return { sent: true };
-          
+
         case 'dig': {
           if (params.x === undefined || params.y === undefined || params.z === undefined) {
             throw new Error('x, y, z coordinates required');
@@ -238,64 +260,69 @@ process.on('message', (msg) => {
           await bot.dig(blockToDig);
           return { dug: true, block: blockToDig.name };
         }
-        
+
         case 'place': {
           if (
             params.x === undefined ||
             params.y === undefined ||
-            params.z === undefined ||
-            !params.blockName
+            params.z === undefined
           ) {
-            throw new Error('x, y, z coordinates and blockName required');
+            throw new Error('x, y, z coordinates are required');
           }
-          
-          const blockName = params.blockName;
+
+          const blockName = params.blockName || params.block;
+          if (!blockName) {
+            throw new Error('block name is required');
+          }
           const itemToPlace = bot.inventory.items().find(i => i.name === blockName);
           if (!itemToPlace) throw new Error(`No ${blockName} in inventory`);
-          
+
           await bot.equip(itemToPlace, 'hand');
           const refBlock = bot.blockAt(new Vec3(params.x, params.y, params.z));
-          
+
           if (!refBlock || refBlock.name === 'air') {
             throw new Error('Cannot place block: reference block must be solid');
           }
-          
+
           await bot.placeBlock(refBlock, new Vec3(0, 1, 0));
           return { placed: true, block: blockName };
         }
-        
+
         case 'craft': {
           if (!params.item) throw new Error('item name required');
-          
+
           const itemId = bot.registry.itemsByName[params.item]?.id;
           if (!itemId) throw new Error(`Unknown item: ${params.item}`);
-          
-          const count = params.count || 1;
-          const recipes = bot.recipesFor(itemId, null, count, params.craftingTable);
+
+          const requestedCount = params.count || 1;
+          const recipes = bot.recipesFor(itemId, null, requestedCount, params.craftingTable);
           if (!recipes || recipes.length === 0) {
             throw new Error(`No recipes available for ${params.item}`);
           }
-          
+
           const recipe = recipes[0];
-          
+          const resultCount = recipe.result?.count || (Array.isArray(recipe.result?.items) ? recipe.result.items[0]?.count : 1) || 1;
+          const craftsNeeded = Math.max(1, Math.ceil(requestedCount / resultCount));
+          const producedCount = resultCount * craftsNeeded;
+
           if (recipe.requiresTable && !params.craftingTable) {
             const craftingTableBlock = bot.findBlock({
               matching: bot.registry.blocksByName.crafting_table?.id,
               maxDistance: 6
             });
-            
+
             if (!craftingTableBlock) {
               throw new Error('Recipe requires crafting table but none found nearby');
             }
-            
-            await bot.craft(recipe, count, craftingTableBlock);
+
+            await bot.craft(recipe, craftsNeeded, craftingTableBlock);
           } else {
-            await bot.craft(recipe, count, null);
+            await bot.craft(recipe, craftsNeeded, null);
           }
-          
-          return { crafted: params.item, count };
+
+          return { crafted: params.item, count: producedCount };
         }
-        
+
         case 'equip': {
           if (!params.item) throw new Error('item name required');
           const itemToEquip = bot.inventory.items().find(i => i.name === params.item);
@@ -303,12 +330,12 @@ process.on('message', (msg) => {
           await bot.equip(itemToEquip, params.destination || 'hand');
           return { equipped: params.item };
         }
-          
+
         case 'wait':
           const duration = params.duration || 1000;
           await new Promise(resolve => setTimeout(resolve, duration));
           return { waited: duration };
-          
+
         case 'goto': {
           if (
             params.x === undefined ||
@@ -317,34 +344,47 @@ process.on('message', (msg) => {
           ) {
             throw new Error('x, y, z coordinates required');
           }
-          
-          const goal = new Vec3(params.x, params.y, params.z);
-          const distance = bot.entity.position.distanceTo(goal);
-          if (distance > 100) {
-            throw new Error('Target too far away (max 100 blocks)');
+
+          const target = new Vec3(params.x, params.y, params.z);
+          const tolerance = params.tolerance ?? 1;
+          const timeout = params.timeout || 30000;
+          const goal = params.precise
+            ? new goals.GoalBlock(target.x, target.y, target.z)
+            : new goals.GoalNear(target.x, target.y, target.z, tolerance);
+
+          const start = Date.now();
+          let timeoutHandle;
+
+          try {
+            await Promise.race([
+              bot.pathfinder.goto(goal),
+              new Promise((_, reject) => {
+                timeoutHandle = setTimeout(() => {
+                  reject(new Error('Pathfinding timeout'));
+                }, timeout);
+              })
+            ]);
+          } finally {
+            if (timeoutHandle) {
+              clearTimeout(timeoutHandle);
+            }
+            bot.pathfinder.setGoal(null);
           }
-          
-          const dx = params.x - bot.entity.position.x;
-          const dz = params.z - bot.entity.position.z;
-          const targetYaw = Math.atan2(-dx, dz);
-          bot.look(targetYaw, bot.entity.pitch, true);
-          
-          const timeout = Math.min(Math.max(distance * 250, 1000), params.timeout || 15000);
-          bot.setControlState('forward', true);
-          await new Promise(resolve => setTimeout(resolve, timeout));
-          bot.clearControlStates();
-          
+
+          const finalPos = bot.entity.position;
+
           return {
             moved: true,
-            target: {
-              x: goal.x,
-              y: goal.y,
-              z: goal.z
+            arrived: true,
+            position: {
+              x: finalPos.x,
+              y: finalPos.y,
+              z: finalPos.z
             },
-            duration_ms: timeout
+            duration_ms: Date.now() - start
           };
         }
-          
+
         default:
           throw new Error(`Unknown instruction type: ${type}`);
       }
@@ -354,21 +394,19 @@ process.on('message', (msg) => {
     process.on('message', async (msg) => {
       if (msg.type === 'command') {
         try {
-          const Vec3 = require('vec3');
-          
           switch (msg.command) {
             case 'respawn':
               bot.chat('/respawn');
               break;
-              
+
             case 'quit':
               bot.quit();
               break;
-              
+
             case 'chat':
               bot.chat(msg.message);
               break;
-              
+
             case 'move':
               // Simple movement commands
               const { direction, blocks } = msg;
@@ -380,31 +418,31 @@ process.on('message', (msg) => {
                 jump: () => bot.setControlState('jump', true),
                 stop: () => bot.clearControlStates()
               };
-              
+
               if (movement[direction]) {
                 movement[direction]();
                 setTimeout(() => bot.clearControlStates(), blocks * 200);
               }
               break;
-              
+
             case 'move_advanced':
               // Advanced movement with relative support
               const { x, y, z, sprint, relative } = msg;
-              
+
               if (relative) {
                 const { forward, backward, left, right, up, down } = relative;
                 bot.clearControlStates();
-                
+
                 // Calculate movement based on direction
                 const yaw = bot.entity.yaw;
-                
+
                 if (forward > 0) bot.setControlState('forward', true);
                 if (backward > 0) bot.setControlState('back', true);
                 if (left > 0) bot.setControlState('left', true);
                 if (right > 0) bot.setControlState('right', true);
                 if (up > 0) bot.setControlState('jump', true);
                 if (sprint) bot.setControlState('sprint', true);
-                
+
                 const timeout = Math.max(1000, Math.abs(forward || backward || left || right || 0) * 250);
                 setTimeout(() => bot.clearControlStates(), timeout);
               } else {
@@ -416,11 +454,11 @@ process.on('message', (msg) => {
                 if (sprint !== undefined) bot.setControlState('sprint', sprint);
               }
               break;
-              
+
             case 'stop':
               bot.clearControlStates();
               break;
-              
+
             case 'get_state':
               // Helper functions for state
               function getCompassDirection(yaw) {
@@ -430,7 +468,7 @@ process.on('message', (msg) => {
                 const index = Math.round(degrees / 45) % 8;
                 return directions[index];
               }
-              
+
               function getPitchDescription(pitch) {
                 const degrees = pitch * 180 / Math.PI;
                 if (degrees < -45) return 'looking up';
@@ -439,9 +477,9 @@ process.on('message', (msg) => {
                 if (degrees > 15) return 'looking slightly down';
                 return 'looking straight';
               }
-              
+
               const blockUnder = bot.blockAt(bot.entity.position.offset(0, -0.5, 0));
-              
+
               const state = {
                 position: {
                   x: bot.entity.position.x,
@@ -475,6 +513,11 @@ process.on('message', (msg) => {
                   max: 20,
                   status: bot.oxygenLevel === 20 ? 'Full' : 'Depleting'
                 },
+                time: {
+                  dayTime: bot.time.timeOfDay,
+                  age: bot.time.age,
+                  isDay: bot.time.isDay
+                },
                 environment: {
                   on_ground: bot.entity.onGround,
                   block_under: blockUnder ? blockUnder.name : 'air',
@@ -492,10 +535,10 @@ process.on('message', (msg) => {
                   is_moving: Math.abs(bot.entity.velocity.x) > 0.01 || Math.abs(bot.entity.velocity.z) > 0.01 || Math.abs(bot.entity.velocity.y) > 0.01
                 }
               };
-              
+
               process.send({ type: 'state_response', state });
               break;
-              
+
             case 'get_inventory':
               const items = bot.inventory.items().map(item => ({
                 name: item.name,
@@ -503,10 +546,10 @@ process.on('message', (msg) => {
                 slot: item.slot,
                 displayName: item.displayName
               }));
-              
+
               process.send({ type: 'inventory_response', items });
               break;
-              
+
             case 'get_entities':
               const entities = Object.values(bot.entities)
                 .filter(e => e.type === 'player' || e.type === 'mob')
@@ -517,10 +560,10 @@ process.on('message', (msg) => {
                   health: e.metadata?.[8],
                   distance: bot.entity.position.distanceTo(e.position)
                 }));
-              
+
               process.send({ type: 'entities_response', entities });
               break;
-              
+
             case 'get_screenshot':
               try {
                 const screenshot = await captureScreenshot();
@@ -529,13 +572,13 @@ process.on('message', (msg) => {
                 process.send({ type: 'screenshot_response', error: error.message });
               }
               break;
-              
+
             case 'get_recipes':
               const { item } = msg;
-              
+
               if (item) {
                 const recipes = bot.recipesFor(parseInt(item) || bot.registry.itemsByName[item]?.id);
-                process.send({ 
+                process.send({
                   type: 'recipes_response',
                   data: {
                     recipes: recipes ? recipes.map(r => ({
@@ -548,7 +591,7 @@ process.on('message', (msg) => {
                 });
               } else {
                 const allRecipes = bot.recipesAll();
-                process.send({ 
+                process.send({
                   type: 'recipes_response',
                   data: {
                     count: allRecipes.length,
@@ -557,23 +600,23 @@ process.on('message', (msg) => {
                 });
               }
               break;
-              
+
             case 'look':
               try {
                 const { yaw, pitch, relative, cardinal } = msg;
-                
+
                 if (relative) {
                   const { yaw_delta, pitch_delta } = relative;
                   const currentYaw = bot.entity.yaw;
                   const currentPitch = bot.entity.pitch;
                   const newYaw = currentYaw + (yaw_delta || 0) * Math.PI / 180;
-                  const newPitch = Math.max(-Math.PI/2, Math.min(Math.PI/2, 
+                  const newPitch = Math.max(-Math.PI/2, Math.min(Math.PI/2,
                     currentPitch + (pitch_delta || 0) * Math.PI / 180));
-                  
+
                   bot.look(newYaw, newPitch, true);
-                  
-                  process.send({ 
-                    type: 'look_response', 
+
+                  process.send({
+                    type: 'look_response',
                     data: {
                       success: true,
                       turned: {
@@ -599,11 +642,11 @@ process.on('message', (msg) => {
                       process.send({ type: 'look_response', data: { error: 'Invalid cardinal direction' } });
                       return;
                   }
-                  
+
                   bot.look(targetYaw, 0, true);
-                  
-                  process.send({ 
-                    type: 'look_response', 
+
+                  process.send({
+                    type: 'look_response',
                     data: {
                       success: true,
                       direction: cardinal,
@@ -616,9 +659,9 @@ process.on('message', (msg) => {
                   });
                 } else if (yaw !== undefined && pitch !== undefined) {
                   bot.look(yaw, pitch, true);
-                  
-                  process.send({ 
-                    type: 'look_response', 
+
+                  process.send({
+                    type: 'look_response',
                     data: {
                       success: true,
                       new_orientation: {
@@ -636,7 +679,89 @@ process.on('message', (msg) => {
                 process.send({ type: 'look_response', data: { error: error.message } });
               }
               break;
-              
+
+            case 'block_at':
+              try {
+                const blockPos = new Vec3(
+                  toSafeNumber(msg.x, Math.floor(bot.entity.position.x)),
+                  toSafeNumber(msg.y, Math.floor(bot.entity.position.y)),
+                  toSafeNumber(msg.z, Math.floor(bot.entity.position.z))
+                );
+                const block = bot.blockAt(blockPos);
+                process.send({
+                  type: 'block_at_response',
+                  block: block ? {
+                    name: block.name,
+                    hardness: block.hardness,
+                    position: {
+                      x: block.position.x,
+                      y: block.position.y,
+                      z: block.position.z
+                    }
+                  } : null
+                });
+              } catch (error) {
+                process.send({ type: 'block_at_response', error: error.message });
+              }
+              break;
+
+            case 'scan_blocks':
+              try {
+                const {
+                  center = {},
+                  kinds = [],
+                  radius = 8,
+                  max = 100
+                } = msg;
+
+                const radiusLimit = Math.min(Math.max(1, radius), 64);
+                const maxResults = Math.min(Math.max(1, max), 512);
+
+                const centerVec = new Vec3(
+                  toSafeNumber(center.x, Math.floor(bot.entity.position.x)),
+                  toSafeNumber(center.y, Math.floor(bot.entity.position.y)),
+                  toSafeNumber(center.z, Math.floor(bot.entity.position.z))
+                );
+
+                const matched = [];
+                outer:
+                for (let dx = -radiusLimit; dx <= radiusLimit; dx++) {
+                  for (let dy = -radiusLimit; dy <= radiusLimit; dy++) {
+                    for (let dz = -radiusLimit; dz <= radiusLimit; dz++) {
+                      const candidate = centerVec.offset(dx, dy, dz);
+                      const block = bot.blockAt(candidate);
+                      if (!block || !block.name) continue;
+
+                      if (kinds.length > 0 && !kinds.includes(block.name)) {
+                        continue;
+                      }
+
+                      matched.push({
+                        name: block.name,
+                        hardness: block.hardness,
+                        position: {
+                          x: candidate.x,
+                          y: candidate.y,
+                          z: candidate.z
+                        }
+                      });
+
+                      if (matched.length >= maxResults) {
+                        break outer;
+                      }
+                    }
+                  }
+                }
+
+                process.send({
+                  type: 'scan_blocks_response',
+                  blocks: matched
+                });
+              } catch (error) {
+                process.send({ type: 'scan_blocks_response', error: error.message });
+              }
+              break;
+
             case 'dig':
               try {
                 const block = bot.blockAt(new Vec3(msg.x, msg.y, msg.z));
@@ -650,18 +775,23 @@ process.on('message', (msg) => {
                 process.send({ type: 'dig_response', error: error.message });
               }
               break;
-              
+
             case 'place':
               try {
-                const itemToPlace = bot.inventory.items().find(i => i.name === msg.blockName);
-                if (!itemToPlace) {
-                  process.send({ type: 'place_response', error: `No ${msg.blockName} in inventory` });
+                const desiredBlock = msg.blockName || msg.block;
+                if (!desiredBlock) {
+                  process.send({ type: 'place_response', error: 'No block specified' });
                   break;
                 }
-                
+                const itemToPlace = bot.inventory.items().find(i => i.name === desiredBlock);
+                if (!itemToPlace) {
+                  process.send({ type: 'place_response', error: `No ${desiredBlock} in inventory` });
+                  break;
+                }
+
                 await bot.equip(itemToPlace, 'hand');
                 const refBlock = bot.blockAt(new Vec3(msg.x, msg.y, msg.z));
-                
+
                 if (!refBlock || refBlock.name === 'air') {
                   process.send({ type: 'place_response', error: 'Cannot place block: reference block must be solid' });
                 } else {
@@ -672,7 +802,7 @@ process.on('message', (msg) => {
                 process.send({ type: 'place_response', error: error.message });
               }
               break;
-              
+
             case 'attack':
               try {
                 const entity = bot.entities[msg.entityId];
@@ -686,7 +816,7 @@ process.on('message', (msg) => {
                 process.send({ type: 'attack_response', error: error.message });
               }
               break;
-              
+
             case 'craft':
               try {
                 const itemId = bot.registry.itemsByName[msg.item]?.id;
@@ -694,37 +824,37 @@ process.on('message', (msg) => {
                   process.send({ type: 'craft_response', error: `Unknown item: ${msg.item}` });
                   break;
                 }
-                
+
                 const recipes = bot.recipesFor(itemId, null, 1, msg.craftingTable);
                 if (!recipes || recipes.length === 0) {
                   process.send({ type: 'craft_response', error: `No recipes available for ${msg.item}` });
                   break;
                 }
-                
+
                 const recipe = recipes[0];
-                
+
                 if (recipe.requiresTable && !msg.craftingTable) {
                   const craftingTableBlock = bot.findBlock({
                     matching: bot.registry.blocksByName.crafting_table?.id,
                     maxDistance: 6
                   });
-                  
+
                   if (!craftingTableBlock) {
                     process.send({ type: 'craft_response', error: 'Recipe requires crafting table but none found nearby' });
                     break;
                   }
-                  
+
                   await bot.craft(recipe, msg.count, craftingTableBlock);
                 } else {
                   await bot.craft(recipe, msg.count, null);
                 }
-                
+
                 process.send({ type: 'craft_response', item: msg.item, count: msg.count });
               } catch (error) {
                 process.send({ type: 'craft_response', error: error.message });
               }
               break;
-              
+
             case 'equip':
               try {
                 const itemToEquip = bot.inventory.items().find(i => i.name === msg.item);
@@ -738,12 +868,12 @@ process.on('message', (msg) => {
                 process.send({ type: 'equip_response', error: error.message });
               }
               break;
-              
+
             case 'batch':
               try {
                 const { instructions, stopOnError } = msg;
                 const results = [];
-                
+
                 for (let i = 0; i < instructions.length; i++) {
                   const instruction = instructions[i];
                   const result = {
@@ -753,14 +883,14 @@ process.on('message', (msg) => {
                     response: null,
                     error: null
                   };
-                  
+
                   try {
                     const response = await executeInstruction(instruction);
                     result.success = true;
                     result.response = response;
                   } catch (error) {
                     result.error = error.message;
-                    
+
                     if (stopOnError) {
                       results.push(result);
                       process.send({
@@ -775,9 +905,9 @@ process.on('message', (msg) => {
                       return;
                     }
                   }
-                  
+
                   results.push(result);
-                  
+
                   // Add delay between instructions
                   if (instruction.delay) {
                     await new Promise(resolve => setTimeout(resolve, instruction.delay));
@@ -785,7 +915,7 @@ process.on('message', (msg) => {
                     await new Promise(resolve => setTimeout(resolve, 100));
                   }
                 }
-                
+
                 process.send({
                   type: 'batch_response',
                   results: {
@@ -796,8 +926,8 @@ process.on('message', (msg) => {
                   }
                 });
               } catch (error) {
-                process.send({ 
-                  type: 'batch_response', 
+                process.send({
+                  type: 'batch_response',
                   results: { error: error.message }
                 });
               }
@@ -808,7 +938,7 @@ process.on('message', (msg) => {
         }
       }
     });
-    
+
     // Keep process alive
     process.on('SIGTERM', () => {
       console.log('[BOT-PROCESS] Received SIGTERM, cleaning up...');
@@ -817,13 +947,13 @@ process.on('message', (msg) => {
       }
       process.exit(0);
     });
-    
+
     process.on('uncaughtException', (err) => {
       console.error('[BOT-PROCESS] Uncaught exception:', err);
       process.send({ type: 'crash', error: err.message, stack: err.stack });
       // Don't exit immediately, let the parent decide
     });
-    
+
     process.on('unhandledRejection', (err) => {
       console.error('[BOT-PROCESS] Unhandled rejection:', err);
       process.send({ type: 'crash', error: err.message });

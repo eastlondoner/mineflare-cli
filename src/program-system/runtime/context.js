@@ -22,7 +22,7 @@ class ContextBuilder {
     };
     this.logs = [];
   }
-  
+
   build() {
     const ctx = {
       args: this.args,
@@ -34,7 +34,7 @@ class ContextBuilder {
       control: this.buildControlAPI(),
       log: this.buildLoggerAPI(),
       clock: this.buildClockAPI(),
-      
+
       // Add new SDK utilities
       flow: this.buildFlowAPI(),
       move: this.buildMovementAPI(),
@@ -43,100 +43,134 @@ class ContextBuilder {
       search: this.buildSearchAPI(),
       geometry: this.buildGeometryAPI()
     };
-    
+
+    // Compatibility shims for legacy programs
+    ctx.nav = {
+      goto: async (target, opts = {}) => {
+        try {
+          const result = await ctx.actions.navigate?.goto(target, opts);
+          return { ok: true, value: result };
+        } catch (error) {
+          return { ok: false, error: error.message };
+        }
+      }
+    };
+
+    ctx.interact = {
+      mine: async ({ pos, expectName }) => {
+        try {
+          const result = await ctx.actions.gather?.mineBlock({
+            position: pos,
+            expect: expectName
+          });
+          return { ok: true, value: result };
+        } catch (error) {
+          return { ok: false, error: error.message };
+        }
+      }
+    };
+
+    ctx.craft = {
+      ensureTable: async () => {
+        try {
+          const result = await ctx.actions.craft?.ensureCraftingTable();
+          return { ok: true, value: result };
+        } catch (error) {
+          return { ok: false, error: error.message };
+        }
+      }
+    };
+
     return ctx;
   }
-  
+
   buildBotAPI() {
     return {
       getState: async () => {
-        if (!this.botServer.bot) {
+        if (!this.botServer || !this.botServer.isConnected()) {
           throw new ProgramError(
             ErrorCode.BOT_DISCONNECTED,
             'Bot is not connected'
           );
         }
-        
-        const entity = this.botServer.bot.entity;
+
+        const state = await this.botServer.getState();
+        const entity = state.position
+          ? new Vec3(state.position.x, state.position.y, state.position.z)
+          : new Vec3(0, 63, 0);
+
         return new BotState({
-          position: entity.position,
-          yaw: entity.yaw,
-          pitch: entity.pitch,
-          health: this.botServer.bot.health,
-          food: this.botServer.bot.food,
-          oxygen: this.botServer.bot.oxygen,
-          onGround: entity.onGround,
-          inWater: entity.isInWater,
-          inLava: entity.isInLava
+          position: entity,
+          yaw: state.orientation?.yaw ?? 0,
+          pitch: state.orientation?.pitch ?? 0,
+          health: state.health?.current ?? 20,
+          food: state.food?.current ?? 20,
+          oxygen: state.oxygen?.current ?? 20,
+          onGround: state.environment?.on_ground ?? false,
+          inWater: state.environment?.in_water ?? false,
+          inLava: state.environment?.in_lava ?? false
         });
       }
     };
   }
-  
+
   buildWorldAPI() {
     const world = {};
-    
+
     // Block scanning
     world.scan = {
-      blocks: async ({ kinds, radius, max = 100 }) => {
-        if (!this.botServer.bot) {
+      blocks: async ({ kinds = [], radius = 8, max = 100, center = null } = {}) => {
+        if (!this.botServer || !this.botServer.isConnected()) {
           throw new ProgramError(ErrorCode.BOT_DISCONNECTED, 'Bot is not connected');
         }
-        
-        const results = [];
-        const position = this.botServer.bot.entity.position;
-        const radiusSq = radius * radius;
-        
-        // Scan blocks around the bot
-        for (let x = -radius; x <= radius; x++) {
-          for (let y = -radius; y <= radius; y++) {
-            for (let z = -radius; z <= radius; z++) {
-              if (x*x + y*y + z*z > radiusSq) continue;
-              
-              const pos = position.offset(x, y, z);
-              const block = this.botServer.bot.blockAt(pos);
-              
-              if (block && kinds.includes(block.name)) {
-                results.push({
-                  position: new Vec3(pos.x, pos.y, pos.z),
-                  name: block.name,
-                  hardness: block.hardness
-                });
-                
-                if (results.length >= max) {
-                  return results;
-                }
-              }
-            }
-          }
-        }
-        
-        return results;
+
+        const currentState = await this.botServer.getState();
+        const scanCenter = center || currentState.position || { x: 0, y: 63, z: 0 };
+
+        const blocks = await this.botServer.scanBlocks({
+          kinds,
+          radius,
+          max,
+          center: scanCenter
+        });
+
+        return blocks.map(block => {
+          const posVec = new Vec3(block.position.x, block.position.y, block.position.z);
+          return {
+            position: posVec,
+            pos: posVec,
+            name: block.name,
+            hardness: block.hardness
+          };
+        });
       },
-      
+
       lineOfSight: async ({ target, maxSteps = 100 }) => {
-        if (!this.botServer.bot) {
+        if (!this.botServer || !this.botServer.isConnected()) {
           throw new ProgramError(ErrorCode.BOT_DISCONNECTED, 'Bot is not connected');
         }
-        
-        const start = this.botServer.bot.entity.position;
+
+        const state = await this.botServer.getState();
+        const start = state.position
+          ? new Vec3(state.position.x, state.position.y, state.position.z)
+          : new Vec3(0, 63, 0);
         const direction = new Vec3(
           target.x - start.x,
           target.y - start.y,
           target.z - start.z
         );
-        
+
         const length = Math.sqrt(
-          direction.x * direction.x + 
-          direction.y * direction.y + 
+          direction.x * direction.x +
+          direction.y * direction.y +
           direction.z * direction.z
         );
-        
+
         // Normalize direction
         direction.x /= length;
         direction.y /= length;
         direction.z /= length;
-        
+
         // Step along the ray
         for (let step = 0; step < maxSteps && step < length; step++) {
           const pos = new Vec3(
@@ -144,61 +178,79 @@ class ContextBuilder {
             start.y + direction.y * step,
             start.z + direction.z * step
           );
-          
-          const block = this.botServer.bot.blockAt(pos);
-          if (block && block.name !== 'air') {
+
+          const block = await this.botServer.blockAt(pos);
+          if (block && block.name && block.name !== 'air') {
             return false;
           }
         }
-        
+
         return true;
       }
     };
-    
+
+    world.scanBlocks = async (options) => world.scan.blocks(options);
+
     // World information
     world.seaLevel = () => 63; // Standard sea level in Minecraft
-    
+
     world.time = async () => {
-      if (!this.botServer.bot) {
+      if (!this.botServer || !this.botServer.isConnected()) {
         throw new ProgramError(ErrorCode.BOT_DISCONNECTED, 'Bot is not connected');
       }
-      
-      const time = this.botServer.bot.time.timeOfDay;
-      const isDay = time >= 0 && time < 12000;
-      
-      return {
-        dayTime: time,
-        isDay
-      };
+
+      return this.botServer.getTime();
     };
-    
+
     return world;
   }
-  
+
   buildActionsAPI() {
     const actions = {};
-    
+
     // Navigation actions
     if (this.capabilities.has('move') || this.capabilities.has('pathfind')) {
       actions.navigate = {
         goto: async (target, opts = {}) => {
           this.budget.check('move');
-          
-          if (!this.botServer.bot) {
+
+          if (!this.botServer || !this.botServer.isConnected()) {
             throw new ProgramError(ErrorCode.BOT_DISCONNECTED, 'Bot is not connected');
           }
-          
+
           try {
+            const params = {
+              x: target.x,
+              y: target.y,
+              z: target.z,
+              timeout: typeof opts.timeoutMs === 'number' ? opts.timeoutMs : 30000
+            };
+
+            const optionMap = {
+              tolerance: 'tolerance',
+              precise: 'precise',
+              maxDrop: 'maxDrop',
+              avoidHoles: 'avoidHoles',
+              allowDig: 'allowDig',
+              allow1by1: 'allow1by1',
+              allowParkour: 'allowParkour',
+              allowSprinting: 'allowSprinting',
+              allowFreeMotion: 'allowFreeMotion',
+              maxDistance: 'maxDistance',
+              range: 'range'
+            };
+
+            for (const [key, paramKey] of Object.entries(optionMap)) {
+              if (opts[key] !== undefined) {
+                params[paramKey] = opts[key];
+              }
+            }
+
             const result = await this.botServer.executeInstruction({
               type: 'goto',
-              params: {
-                x: target.x,
-                y: target.y,
-                z: target.z,
-                timeout: opts.timeoutMs || 30000
-              }
+              params
             });
-            
+
             return result;
           } catch (error) {
             throw new ProgramError(
@@ -207,73 +259,204 @@ class ContextBuilder {
             );
           }
         },
-        
+
         stop: async () => {
-          if (!this.botServer.bot) {
+          if (!this.botServer || !this.botServer.isConnected()) {
             throw new ProgramError(ErrorCode.BOT_DISCONNECTED, 'Bot is not connected');
           }
-          
+
           return await this.botServer.executeInstruction({
             type: 'stop'
           });
         }
       };
     }
-    
+
     // Mining/gathering actions
     if (this.capabilities.has('dig')) {
       actions.gather = {
-        mineBlock: async ({ position, expect, timeoutMs = 10000 }) => {
+        mineBlock: async ({
+          position,
+          expect,
+          timeoutMs = 10000,
+          retries = 3,
+          reachDistance = 4.5,
+          avoidHoles = true,
+          maxDrop = 2
+        }) => {
           this.budget.check('dig');
-          
-          if (!this.botServer.bot) {
+
+          if (!this.botServer || !this.botServer.isConnected()) {
             throw new ProgramError(ErrorCode.BOT_DISCONNECTED, 'Bot is not connected');
           }
-          
-          try {
-            // Check if block matches expectation
-            if (expect) {
-              const block = this.botServer.bot.blockAt(position);
-              if (!block || !block.name.includes(expect)) {
-                throw new ProgramError(
-                  ErrorCode.PRECONDITION,
-                  `Expected block containing '${expect}' but found '${block?.name || 'air'}'`
-                );
+
+          const blockPos = new Vec3(
+            Math.floor(position.x),
+            Math.floor(position.y),
+            Math.floor(position.z)
+          );
+
+          const ensureBlockMatches = async () => {
+            if (!expect) return;
+
+            const block = await this.botServer.blockAt({
+              x: blockPos.x,
+              y: blockPos.y,
+              z: blockPos.z
+            });
+            if (!block || !block.name || !block.name.includes(expect)) {
+              throw new ProgramError(
+                ErrorCode.PRECONDITION,
+                `Expected block containing '${expect}' but found '${block?.name || 'air'}'`
+              );
+            }
+          };
+
+          const ensureInRange = async () => {
+            if (!actions.navigate || typeof actions.navigate.goto !== 'function') {
+              return;
+            }
+
+            const state = await this.botServer.getState();
+            const botPosition = state?.position
+              ? new Vec3(state.position.x, state.position.y, state.position.z)
+              : null;
+
+            if (botPosition && botPosition.distanceTo(blockPos) <= reachDistance) {
+              return;
+            }
+
+            const candidateOffsets = [
+              new Vec3(1, 0, 0),
+              new Vec3(-1, 0, 0),
+              new Vec3(0, 0, 1),
+              new Vec3(0, 0, -1),
+              new Vec3(1, 1, 0),
+              new Vec3(-1, 1, 0),
+              new Vec3(0, 1, 1),
+              new Vec3(0, 1, -1)
+            ];
+
+            let lastError = null;
+
+            for (const offset of candidateOffsets) {
+              const target = new Vec3(
+                blockPos.x + offset.x,
+                blockPos.y + offset.y,
+                blockPos.z + offset.z
+              );
+
+              try {
+                await actions.navigate.goto(target, {
+                  tolerance: 1,
+                  avoidHoles,
+                  maxDrop,
+                  timeoutMs: Math.max(5000, Math.min(timeoutMs, 20000))
+                });
+
+                const refreshedState = await this.botServer.getState();
+                const refreshedPos = refreshedState?.position
+                  ? new Vec3(
+                      refreshedState.position.x,
+                      refreshedState.position.y,
+                      refreshedState.position.z
+                    )
+                  : null;
+
+                if (refreshedPos && refreshedPos.distanceTo(blockPos) <= reachDistance) {
+                  return;
+                }
+              } catch (navError) {
+                lastError = navError;
               }
             }
-            
-            const result = await this.botServer.executeInstruction({
-              type: 'dig',
-              params: {
-                x: position.x,
-                y: position.y,
-                z: position.z
-              }
-            });
-            
-            return result;
-          } catch (error) {
-            if (error instanceof ProgramError) throw error;
-            
+
+            const reason = lastError?.message || 'no navigable approach found';
             throw new ProgramError(
-              ErrorCode.OPERATION_FAILED,
-              `Failed to mine block: ${error.message}`
+              ErrorCode.PATHFIND,
+              `Failed to reach block at (${blockPos.x}, ${blockPos.y}, ${blockPos.z}): ${reason}`
             );
+          };
+
+          await ensureBlockMatches();
+          await ensureInRange();
+
+          const attempts = Math.max(1, retries);
+          let lastFailure = null;
+
+          for (let attempt = 1; attempt <= attempts; attempt++) {
+            try {
+              const result = await this.botServer.executeInstruction({
+                type: 'dig',
+                params: {
+                  x: blockPos.x,
+                  y: blockPos.y,
+                  z: blockPos.z
+                }
+              });
+
+              try {
+                await this.botServer.executeInstruction({
+                  type: 'goto',
+                  params: {
+                    x: blockPos.x + 0.5,
+                    y: blockPos.y,
+                    z: blockPos.z + 0.5,
+                    tolerance: 1,
+                    timeout: Math.max(3000, Math.min(timeoutMs, 10000))
+                  }
+                });
+                await new Promise(resolve => setTimeout(resolve, 1000));
+              } catch {
+                // Ignore collection failures; mining succeeded
+              }
+
+              return result;
+            } catch (error) {
+              lastFailure = error;
+
+              if (error instanceof ProgramError) {
+                if (error.code === ErrorCode.PRECONDITION) {
+                  throw error;
+                }
+
+                if (attempt >= attempts) {
+                  throw error;
+                }
+              } else if (attempt >= attempts) {
+                throw new ProgramError(
+                  ErrorCode.OPERATION_FAILED,
+                  `Failed to mine block: ${error.message}`
+                );
+              }
+
+              // Re-verify block still exists before retrying
+              await ensureBlockMatches();
+              await ensureInRange();
+
+              // Brief pause before retrying to allow physics to settle
+              await new Promise(resolve => setTimeout(resolve, 200));
+            }
           }
+
+          throw new ProgramError(
+            ErrorCode.OPERATION_FAILED,
+            `Failed to mine block after ${attempts} attempts: ${lastFailure?.message || 'unknown error'}`
+          );
         }
       };
     }
-    
+
     // Crafting actions
     if (this.capabilities.has('craft')) {
       actions.craft = {
         craft: async (recipe, count = 1) => {
           this.budget.check('craft');
-          
-          if (!this.botServer.bot) {
+
+          if (!this.botServer || !this.botServer.isConnected()) {
             throw new ProgramError(ErrorCode.BOT_DISCONNECTED, 'Bot is not connected');
           }
-          
+
           try {
             const result = await this.botServer.executeInstruction({
               type: 'craft',
@@ -282,7 +465,7 @@ class ContextBuilder {
                 count: count
               }
             });
-            
+
             return result;
           } catch (error) {
             throw new ProgramError(
@@ -291,32 +474,70 @@ class ContextBuilder {
             );
           }
         },
-        
+
         ensureCraftingTable: async () => {
           this.budget.check('craft');
-          
-          if (!this.botServer.bot) {
+
+          if (!this.botServer || !this.botServer.isConnected()) {
             throw new ProgramError(ErrorCode.BOT_DISCONNECTED, 'Bot is not connected');
           }
-          
+
           // Check inventory for crafting table
-          const inventory = this.botServer.bot.inventory.items();
+          const fetchInventory = async () => await this.botServer.getInventory();
+          let inventory = await fetchInventory();
           const hasTable = inventory.some(item => item.name === 'crafting_table');
-          
+          const countPlanks = inv =>
+            inv
+              .filter(item => item.name.endsWith('_planks'))
+              .reduce((sum, item) => sum + item.count, 0);
+          let plankCount = countPlanks(inventory);
+          const getLogs = inv => inv.filter(item => item.name.endsWith('_log') && item.count > 0);
+
           if (!hasTable) {
-            // Craft a crafting table
-            await this.craft('crafting_table', 1);
+            // Craft planks as needed (waiting briefly for drops to reach inventory)
+            let waitAttempts = 0;
+            while (plankCount < 4) {
+              let availableLogs = getLogs(inventory);
+
+              if (availableLogs.length === 0) {
+                if (waitAttempts >= 10) {
+                  throw new ProgramError(
+                    ErrorCode.PRECONDITION,
+                    'Need at least one log to craft a crafting table'
+                  );
+                }
+
+                waitAttempts += 1;
+                await new Promise(resolve => setTimeout(resolve, 200));
+                inventory = await fetchInventory();
+                plankCount = countPlanks(inventory);
+                continue;
+              }
+
+              waitAttempts = 0;
+              const log = availableLogs[0];
+              const plankName = log.name.replace('_log', '_planks');
+
+              // Mineflayer requires plank crafts in multiples of four (one log per craft)
+              await actions.craft.craft(plankName, 4);
+
+              inventory = await fetchInventory();
+              plankCount = countPlanks(inventory);
+            }
+
+            await actions.craft.craft('crafting_table', 1);
           }
-          
+
           // Find a place to put it
           if (this.capabilities.has('place')) {
-            const position = this.botServer.bot.entity.position;
+            const state = await this.botServer.getState();
+            const position = state.position || { x: 0, y: 63, z: 0 };
             const nearbyPos = new Vec3(
               Math.floor(position.x) + 1,
               Math.floor(position.y),
               Math.floor(position.z)
             );
-            
+
             await this.botServer.executeInstruction({
               type: 'place',
               params: {
@@ -327,21 +548,21 @@ class ContextBuilder {
               }
             });
           }
-          
+
           return { success: true };
         }
       };
     }
-    
+
     // Inventory actions
     if (this.capabilities.has('inventory')) {
       actions.inventory = {
         get: async () => {
-          if (!this.botServer.bot) {
+          if (!this.botServer || !this.botServer.isConnected()) {
             throw new ProgramError(ErrorCode.BOT_DISCONNECTED, 'Bot is not connected');
           }
-          
-          const items = this.botServer.bot.inventory.items();
+
+          const items = await this.botServer.getInventory();
           return items.map(item => ({
             id: item.type,
             name: item.name,
@@ -349,15 +570,15 @@ class ContextBuilder {
             metadata: item.metadata
           }));
         },
-        
+
         requireBlocks: async ({ count, allowGather }) => {
           this.budget.check('inventory');
-          
+
           const inventory = await actions.inventory.get();
           const blockCount = inventory
             .filter(item => item.name.includes('_planks') || item.name === 'cobblestone')
             .reduce((sum, item) => sum + item.count, 0);
-          
+
           if (blockCount < count) {
             if (!allowGather) {
               throw new ProgramError(
@@ -365,19 +586,19 @@ class ContextBuilder {
                 `Need ${count} blocks but only have ${blockCount}`
               );
             }
-            
+
             // TODO: Implement gathering logic
             throw new ProgramError(
               ErrorCode.OPERATION_FAILED,
               'Automatic gathering not yet implemented'
             );
           }
-          
+
           return { success: true };
         }
       };
     }
-    
+
     // Search actions (high-level patterns)
     if (this.capabilities.has('pathfind')) {
       actions.search = {
@@ -385,7 +606,7 @@ class ContextBuilder {
           // This will be implemented in deterministic.js
           const DeterministicSearch = require('../deterministic');
           const search = new DeterministicSearch(this.botServer, this.seed);
-          
+
           return await search.expandSquare({
             radius,
             predicate,
@@ -395,13 +616,13 @@ class ContextBuilder {
         }
       };
     }
-    
+
     return actions;
   }
-  
+
   buildEventsAPI() {
     const eventHandlers = new Map();
-    
+
     return {
       on: (eventName, callback) => {
         if (!this.capabilities.has('events')) {
@@ -410,13 +631,13 @@ class ContextBuilder {
             'Events require the "events" capability'
           );
         }
-        
+
         if (!eventHandlers.has(eventName)) {
           eventHandlers.set(eventName, []);
         }
-        
+
         eventHandlers.get(eventName).push(callback);
-        
+
         // Return unsubscribe function
         return () => {
           const handlers = eventHandlers.get(eventName);
@@ -428,7 +649,7 @@ class ContextBuilder {
           }
         };
       },
-      
+
       emit: (eventName, data) => {
         const handlers = eventHandlers.get(eventName);
         if (handlers) {
@@ -443,21 +664,21 @@ class ContextBuilder {
       }
     };
   }
-  
+
   buildControlAPI() {
     return {
       success: (data) => {
         throw { __mfSuccess: true, data };
       },
-      
+
       fail: (message, data) => {
         throw { __mfFailure: true, message, data };
       },
-      
+
       cancelToken: this.cancelToken
     };
   }
-  
+
   buildLoggerAPI() {
     return {
       info: (message, meta) => {
@@ -469,7 +690,7 @@ class ContextBuilder {
         });
         console.log('[PROGRAM INFO]', message, meta || '');
       },
-      
+
       warn: (message, meta) => {
         this.logs.push({
           level: 'warn',
@@ -479,7 +700,7 @@ class ContextBuilder {
         });
         console.log('[PROGRAM WARN]', message, meta || '');
       },
-      
+
       error: (message, meta) => {
         this.logs.push({
           level: 'error',
@@ -491,22 +712,22 @@ class ContextBuilder {
       }
     };
   }
-  
+
   buildClockAPI() {
     const startTime = Date.now();
-    
+
     return {
       now: () => {
         // Return deterministic time based on program start
         return Date.now() - startTime;
       },
-      
+
       sleep: (ms) => {
         return new Promise(resolve => setTimeout(resolve, ms));
       }
     };
   }
-  
+
   buildFlowAPI() {
     // Bind flow utilities with context
     return {
@@ -517,7 +738,7 @@ class ContextBuilder {
       sleep: flowUtils.sleep
     };
   }
-  
+
   buildMovementAPI() {
     // Bind movement utilities with context
     const self = this;
@@ -530,7 +751,7 @@ class ContextBuilder {
       circleAround: (center, radius, options) => movementUtils.circleAround(self.build(), center, radius, options)
     };
   }
-  
+
   buildSafetyAPI() {
     // Bind safety utilities with context
     const self = this;
@@ -542,7 +763,7 @@ class ContextBuilder {
       retreatToSafety: (options) => safetyUtils.retreatToSafety(self.build(), options)
     };
   }
-  
+
   buildWatcherAPI() {
     // Bind watcher utilities with context
     const self = this;
@@ -555,7 +776,7 @@ class ContextBuilder {
       watchValue: watcherUtils.watchValue
     };
   }
-  
+
   buildSearchAPI() {
     // Bind search utilities with context
     const self = this;
@@ -566,18 +787,18 @@ class ContextBuilder {
       randomWalk: (options) => searchUtils.randomWalk(self.build(), options)
     };
   }
-  
+
   buildGeometryAPI() {
     // Export geometry utilities directly (they don't need context)
     return {
       // Sorting
       nearestFirst: geometryUtils.nearestFirst,
-      
+
       // Distance metrics
       manhattan: geometryUtils.manhattan,
       chebyshev: geometryUtils.chebyshev,
       euclidean: geometryUtils.euclidean,
-      
+
       // Vector operations
       add: geometryUtils.add,
       subtract: geometryUtils.subtract,
@@ -589,34 +810,34 @@ class ContextBuilder {
       project: geometryUtils.project,
       reflect: geometryUtils.reflect,
       rotateY: geometryUtils.rotateY,
-      
+
       // Bounds and regions
       getBoundingBox: geometryUtils.getBoundingBox,
       isWithinBounds: geometryUtils.isWithinBounds,
-      
+
       // Shape generators
       getLine: geometryUtils.getLine,
       getCircle: geometryUtils.getCircle,
       getDisc: geometryUtils.getDisc,
-      
+
       // Utilities
       clamp: geometryUtils.clamp,
       round: geometryUtils.round,
       floor: geometryUtils.floor
     };
   }
-  
+
   cancel() {
     this.cancelToken.isCancelled = true;
     for (const callback of this.cancelToken.callbacks) {
       callback();
     }
   }
-  
+
   getLogs() {
     return this.logs;
   }
-  
+
   getUsage() {
     return this.budget.getUsage();
   }

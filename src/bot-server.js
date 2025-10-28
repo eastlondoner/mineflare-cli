@@ -1,5 +1,11 @@
 const mineflayer = require('mineflayer');
 const express = require('express');
+const {
+  pathfinder: pathfinderPlugin,
+  Movements,
+  goals
+} = require('mineflayer-pathfinder');
+const minecraftData = require('minecraft-data');
 
 class MinecraftBotServer {
   constructor() {
@@ -9,16 +15,16 @@ class MinecraftBotServer {
     this.viewer = null;
     this.config = null; // Store config for reconnection
     this.isReconnecting = false;
-    
+
     this.app.use(express.json());
     this.setupRoutes();
   }
 
   isConnected() {
     // Unified bot connection check used by both HTTP handlers and ProgramRunner
-    return this.bot && 
-           this.bot.entity && 
-           this.bot._client && 
+    return this.bot &&
+           this.bot.entity &&
+           this.bot._client &&
            !this.bot._client.ended;
   }
 
@@ -38,10 +44,10 @@ class MinecraftBotServer {
       console.log('[BOT] Reconnection already in progress...');
       return;
     }
-    
+
     this.isReconnecting = true;
     console.log('[BOT] Starting reconnection process...');
-    
+
     // Clean up old bot instance
     if (this.bot) {
       try {
@@ -57,7 +63,7 @@ class MinecraftBotServer {
             }
           });
         }
-        
+
         // End the connection if it exists
         if (this.bot._client && !this.bot._client.ended) {
           this.bot.quit();
@@ -67,7 +73,7 @@ class MinecraftBotServer {
       }
       this.bot = null;
     }
-    
+
     // Close viewer if it exists
     if (this.viewer) {
       try {
@@ -77,7 +83,7 @@ class MinecraftBotServer {
       }
       this.viewer = null;
     }
-    
+
     // Wait a bit before reconnecting to let server clean up
     setTimeout(async () => {
       if (this.config) {
@@ -95,7 +101,7 @@ class MinecraftBotServer {
   async setupBot(config) {
     // Store config for potential reconnection
     this.config = config;
-    
+
     // Create bot directly
     this.bot = mineflayer.createBot({
       host: config.host || 'localhost',
@@ -104,17 +110,22 @@ class MinecraftBotServer {
       version: config.version || false,
       auth: config.auth || 'offline'
     });
-    
+
+    try {
+      this.bot.loadPlugin(pathfinderPlugin);
+    } catch (error) {
+      console.error('[BOT] Failed to load pathfinder plugin:', error.message);
+    }
+
     console.log('[BOT] Bot created, applying death crash prevention patches...');
-    
+
     // Patch the removeAllListeners method to prevent crashes
     const originalRemoveAllListeners = this.bot.removeAllListeners;
     this.bot.removeAllListeners = function(event) {
       try {
-        // Check if _events is initialized before calling original
         if (!this._events) {
-          console.log('[BOT] Skipping removeAllListeners - _events not initialized');
-          return this;
+          this._events = Object.create(null);
+          this._eventsCount = 0;
         }
         return originalRemoveAllListeners.call(this, event);
       } catch (err) {
@@ -122,15 +133,15 @@ class MinecraftBotServer {
         return this;
       }
     }.bind(this.bot);
-    
+
     // Also patch the bot._client if it exists
     if (this.bot._client) {
       const originalClientRemoveAll = this.bot._client.removeAllListeners;
       this.bot._client.removeAllListeners = function(event) {
         try {
           if (!this._events) {
-            console.log('[BOT] Skipping _client.removeAllListeners - _events not initialized');
-            return this;
+            this._events = Object.create(null);
+            this._eventsCount = 0;
           }
           return originalClientRemoveAll.call(this, event);
         } catch (err) {
@@ -139,7 +150,7 @@ class MinecraftBotServer {
         }
       }.bind(this.bot._client);
     }
-    
+
     // Track spawn and initialization state
     this.spawnCompleted = false;
     this.pendingDeathHandling = false;
@@ -149,13 +160,23 @@ class MinecraftBotServer {
       // Track spawn time to detect when bot spawns already dead
       this.spawnTime = Date.now();
       this.logEvent('spawn', { position: this.bot.entity.position });
-      
+
+      try {
+        const version = this.bot.version || config.version || '1.21.1';
+        const mcData = minecraftData(version);
+        const defaultMovements = new Movements(this.bot, mcData);
+        this.bot.pathfinder.setMovements(defaultMovements);
+        this.bot.pathfinder.setGoal(null);
+      } catch (movementError) {
+        console.error('[BOT] Failed to initialize pathfinder movements:', movementError.message);
+      }
+
       // Check if bot spawned dead (edge case that causes crashes)
       if (this.bot.health === 0) {
         console.log('[BOT] WARNING: Bot spawned already dead! Health is 0 on spawn.');
         this.pendingDeathHandling = true;
       }
-      
+
       if (config.enableViewer !== false) {
         try {
           // Dynamically import prismarine-viewer only when needed
@@ -169,13 +190,13 @@ class MinecraftBotServer {
           console.log('Continuing without viewer support.');
         }
       }
-      
+
       // Mark spawn as completed and handle pending death after a delay
       // This ensures the bot is fully initialized before handling death events
       setTimeout(() => {
         this.spawnCompleted = true;
         this.isInitializing = false; // Mark initialization as complete
-        
+
         // If bot spawned dead, handle it now that we're initialized
         if (this.pendingDeathHandling) {
           console.log('[BOT] Handling delayed death event (bot spawned dead)');
@@ -193,9 +214,9 @@ class MinecraftBotServer {
     });
 
     this.bot.on('health', () => {
-      this.logEvent('health', { 
-        health: this.bot.health, 
-        food: this.bot.food 
+      this.logEvent('health', {
+        health: this.bot.health,
+        food: this.bot.food
       });
     });
 
@@ -207,7 +228,7 @@ class MinecraftBotServer {
         this.pendingDeathHandling = true;
         return;
       }
-      
+
       this.handleDeath();
     });
 
@@ -218,7 +239,7 @@ class MinecraftBotServer {
     this.bot.on('error', (err) => {
       console.error('[BOT] Error occurred:', err);
       this.logEvent('error', { message: err.message });
-      
+
       // If error occurs right after death, it might be the digging plugin bug
       if (err.message && (err.message.includes('removeAllListeners') || err.message.includes('undefined is not an object'))) {
         console.log('[BOT] Caught digging plugin cleanup error, attempting recovery...');
@@ -228,19 +249,19 @@ class MinecraftBotServer {
 
     this.bot.on('entitySpawn', (entity) => {
       if (entity.type === 'player' || entity.type === 'mob') {
-        this.logEvent('entitySpawn', { 
-          type: entity.type, 
+        this.logEvent('entitySpawn', {
+          type: entity.type,
           name: entity.name || entity.displayName,
-          position: entity.position 
+          position: entity.position
         });
       }
     });
 
     this.bot.on('entityHurt', (entity) => {
       if (entity === this.bot.entity) {
-        this.logEvent('hurt', { 
+        this.logEvent('hurt', {
           health: this.bot.health,
-          position: this.bot.entity.position 
+          position: this.bot.entity.position
         });
       }
     });
@@ -261,9 +282,9 @@ class MinecraftBotServer {
   handleDeath() {
     try {
       this.logEvent('death', { position: this.bot.entity ? this.bot.entity.position : null });
-      
+
       console.log('[BOT] Died, attempting to respawn...');
-      
+
       // Clear digging state safely if needed
       if (this.bot.targetDigBlock) {
         try {
@@ -273,7 +294,7 @@ class MinecraftBotServer {
           console.log('[BOT] Error clearing dig block on death:', err.message);
         }
       }
-      
+
       // Set up respawn tracking
       let respawnSuccessful = false;
       const respawnTimeout = setTimeout(() => {
@@ -282,18 +303,18 @@ class MinecraftBotServer {
           this.handleReconnect();
         }
       }, 5000); // 5 second timeout for respawn
-      
+
       // Listen for successful respawn
       const onRespawn = () => {
         respawnSuccessful = true;
         clearTimeout(respawnTimeout);
         console.log('[BOT] Successfully respawned!');
         this.logEvent('respawn_success', { timestamp: Date.now() });
-        
+
         // Reset spawn tracking for next death
         this.spawnCompleted = true;
         this.pendingDeathHandling = false;
-        
+
         // Clean up listener - but only if removeListener is safe to call
         try {
           if (this.bot && this.bot.removeListener && typeof this.bot.removeListener === 'function') {
@@ -303,9 +324,9 @@ class MinecraftBotServer {
           // Silently ignore listener removal errors
         }
       };
-      
+
       this.bot.once('spawn', onRespawn);
-      
+
       // Add a small delay then attempt respawn using proper API
       setTimeout(() => {
         try {
@@ -320,7 +341,7 @@ class MinecraftBotServer {
               this.bot._client.write('client_command', { action: 1 }); // 1 = respawn
               console.log('[BOT] Respawn packet sent directly');
             }
-            
+
             this.logEvent('respawn_attempt', { timestamp: Date.now() });
           } else {
             console.log('[BOT] Bot disconnected after death, triggering reconnection...');
@@ -351,7 +372,7 @@ class MinecraftBotServer {
       if (this.isReconnecting) {
         return res.status(400).json({ error: 'Reconnection already in progress' });
       }
-      
+
       console.log('[API] Manual reconnection requested');
       this.handleReconnect();
       res.json({ success: true, message: 'Reconnection initiated' });
@@ -367,13 +388,13 @@ class MinecraftBotServer {
         // Convert yaw to degrees (0-360)
         let degrees = (yaw * 180 / Math.PI + 180) % 360;
         if (degrees < 0) degrees += 360;
-        
+
         // Determine compass direction
         const directions = ['North', 'North-East', 'East', 'South-East', 'South', 'South-West', 'West', 'North-West'];
         const index = Math.round(degrees / 45) % 8;
         return directions[index];
       }
-      
+
       // Helper function to get pitch description
       function getPitchDescription(pitch) {
         const degrees = pitch * 180 / Math.PI;
@@ -383,11 +404,11 @@ class MinecraftBotServer {
         if (degrees > 15) return 'looking slightly down';
         return 'looking straight';
       }
-      
+
       // Get block the bot is standing on
       const Vec3 = require('vec3');
       const blockUnder = this.bot.blockAt(this.bot.entity.position.offset(0, -0.5, 0));
-      
+
       const state = {
         position: {
           x: this.bot.entity.position.x,
@@ -435,10 +456,10 @@ class MinecraftBotServer {
           y: this.bot.entity.velocity.y,
           z: this.bot.entity.velocity.z,
           speed: Math.sqrt(
-            this.bot.entity.velocity.x ** 2 + 
+            this.bot.entity.velocity.x ** 2 +
             this.bot.entity.velocity.z ** 2
           ).toFixed(3),
-          is_moving: Math.abs(this.bot.entity.velocity.x) > 0.01 || 
+          is_moving: Math.abs(this.bot.entity.velocity.x) > 0.01 ||
                     Math.abs(this.bot.entity.velocity.z) > 0.01 ||
                     Math.abs(this.bot.entity.velocity.y) > 0.01
         }
@@ -519,42 +540,42 @@ class MinecraftBotServer {
       }
 
       const { x, y, z, sprint, relative } = req.body;
-      
+
       // Handle relative movement
       if (relative) {
         const { forward, backward, left, right, up, down } = relative;
         const Vec3 = require('vec3');
-        
+
         // Clear any existing movement states first
         this.bot.clearControlStates();
-        
+
         // Calculate target position based on bot's current orientation
         let targetPosition = this.bot.entity.position.clone();
-        
+
         // Get the bot's looking direction
         const yaw = this.bot.entity.yaw;
-        
+
         // Calculate movement vector based on yaw
         if (forward > 0 || backward > 0) {
           const distance = forward > 0 ? forward : -backward;
           targetPosition.x += -Math.sin(yaw) * distance;
           targetPosition.z += Math.cos(yaw) * distance;
         }
-        
+
         if (left > 0 || right > 0) {
           const distance = right > 0 ? right : -left;
           // Strafe perpendicular to looking direction
           targetPosition.x += Math.cos(yaw) * distance;
           targetPosition.z += Math.sin(yaw) * distance;
         }
-        
+
         if (up > 0 || down > 0) {
           targetPosition.y += up > 0 ? up : -down;
         }
-        
+
         // Enable sprint if requested
         if (sprint) this.bot.setControlState('sprint', true);
-        
+
         // Use pathfinding for accurate movement
         try {
           await this.bot.pathfinder.goto(new require('mineflayer-pathfinder').goals.GoalNear(
@@ -563,8 +584,8 @@ class MinecraftBotServer {
             targetPosition.z,
             0
           ));
-          res.json({ 
-            success: true, 
+          res.json({
+            success: true,
             moved_to: {
               x: Math.floor(targetPosition.x),
               y: Math.floor(targetPosition.y),
@@ -579,21 +600,21 @@ class MinecraftBotServer {
         } catch (error) {
           // Fallback to simple movement if pathfinding fails
           const timeout = Math.max(1000, Math.abs(forward || backward || left || right || 0) * 250);
-          
+
           // Set control states for movement
           if (forward > 0) this.bot.setControlState('forward', true);
           if (backward > 0) this.bot.setControlState('back', true);
           if (left > 0) this.bot.setControlState('left', true);
           if (right > 0) this.bot.setControlState('right', true);
           if (up > 0) this.bot.setControlState('jump', true);
-          
+
           // Wait for movement then stop
           setTimeout(() => {
             this.bot.clearControlStates();
           }, timeout);
-          
-          res.json({ 
-            success: true, 
+
+          res.json({
+            success: true,
             method: 'simple_movement',
             duration_ms: timeout
           });
@@ -606,7 +627,7 @@ class MinecraftBotServer {
         if (z !== undefined) this.bot.setControlState('right', z > 0);
         if (y !== undefined && y > 0) this.bot.setControlState('jump', true);
         if (sprint !== undefined) this.bot.setControlState('sprint', sprint);
-        
+
         res.json({ success: true });
       }
     });
@@ -626,20 +647,20 @@ class MinecraftBotServer {
       }
 
       const { yaw, pitch, relative, cardinal } = req.body;
-      
+
       // Handle relative turn
       if (relative) {
         const { yaw_delta, pitch_delta } = relative;
         const currentYaw = this.bot.entity.yaw;
         const currentPitch = this.bot.entity.pitch;
-        
+
         // Convert degrees to radians and apply
         const newYaw = currentYaw + (yaw_delta || 0) * Math.PI / 180;
-        const newPitch = Math.max(-Math.PI/2, Math.min(Math.PI/2, 
+        const newPitch = Math.max(-Math.PI/2, Math.min(Math.PI/2,
           currentPitch + (pitch_delta || 0) * Math.PI / 180));
-        
+
         this.bot.look(newYaw, newPitch, true);
-        res.json({ 
+        res.json({
           success: true,
           turned: {
             yaw_degrees: yaw_delta || 0,
@@ -672,9 +693,9 @@ class MinecraftBotServer {
           default:
             return res.status(400).json({ error: 'Invalid cardinal direction' });
         }
-        
+
         this.bot.look(targetYaw, 0, true);  // Look straight at horizon
-        res.json({ 
+        res.json({
           success: true,
           direction: cardinal,
           new_orientation: {
@@ -687,7 +708,7 @@ class MinecraftBotServer {
       // Handle absolute look
       else if (yaw !== undefined && pitch !== undefined) {
         this.bot.look(yaw, pitch, true);
-        res.json({ 
+        res.json({
           success: true,
           new_orientation: {
             yaw: yaw,
@@ -707,7 +728,7 @@ class MinecraftBotServer {
       }
 
       const { x, y, z } = req.body;
-      
+
       if (x === undefined || y === undefined || z === undefined) {
         return res.status(400).json({ error: 'x, y, z coordinates required' });
       }
@@ -731,7 +752,7 @@ class MinecraftBotServer {
       }
 
       const { x, y, z, blockName } = req.body;
-      
+
       if (x === undefined || y === undefined || z === undefined || !blockName) {
         return res.status(400).json({ error: 'x, y, z coordinates and blockName required' });
       }
@@ -744,15 +765,15 @@ class MinecraftBotServer {
 
         await this.bot.equip(item, 'hand');
         const referenceBlock = this.bot.blockAt(new (require('vec3'))(x, y, z));
-        
+
         if (!referenceBlock || referenceBlock.name === 'air') {
-          return res.status(400).json({ 
-            error: 'Cannot place block: reference block must be a solid block, not air or empty space' 
+          return res.status(400).json({
+            error: 'Cannot place block: reference block must be a solid block, not air or empty space'
           });
         }
 
         await this.bot.placeBlock(referenceBlock, new (require('vec3'))(0, 1, 0));
-        
+
         res.json({ success: true });
       } catch (error) {
         res.status(500).json({ error: error.message });
@@ -765,7 +786,7 @@ class MinecraftBotServer {
       }
 
       const { entityId } = req.body;
-      
+
       if (!entityId) {
         return res.status(400).json({ error: 'entityId required' });
       }
@@ -785,10 +806,10 @@ class MinecraftBotServer {
       }
 
       const { item } = req.query;
-      
+
       if (item) {
         const recipes = this.bot.recipesFor(parseInt(item) || this.bot.registry.itemsByName[item]?.id);
-        res.json({ 
+        res.json({
           recipes: recipes ? recipes.map(r => ({
             result: r.result,
             inShape: r.inShape,
@@ -798,7 +819,7 @@ class MinecraftBotServer {
         });
       } else {
         const allRecipes = this.bot.recipesAll();
-        res.json({ 
+        res.json({
           count: allRecipes.length,
           message: 'Use ?item=<name> to get recipes for specific item'
         });
@@ -811,7 +832,7 @@ class MinecraftBotServer {
       }
 
       const { item, count = 1, craftingTable = false } = req.body;
-      
+
       if (!item) {
         return res.status(400).json({ error: 'item name required' });
       }
@@ -822,7 +843,7 @@ class MinecraftBotServer {
           return res.status(400).json({ error: `Unknown item: ${item}` });
         }
 
-        const recipes = this.bot.recipesFor(itemId, null, 1, craftingTable);
+        const recipes = this.bot.recipesFor(itemId, null, count, craftingTable);
         if (!recipes || recipes.length === 0) {
           return res.status(400).json({ error: `No recipes available for ${item}` });
         }
@@ -836,8 +857,8 @@ class MinecraftBotServer {
           });
 
           if (!craftingTableBlock) {
-            return res.status(400).json({ 
-              error: 'Recipe requires crafting table but none found nearby' 
+            return res.status(400).json({
+              error: 'Recipe requires crafting table but none found nearby'
             });
           }
 
@@ -846,8 +867,8 @@ class MinecraftBotServer {
           await this.bot.craft(recipe, count, null);
         }
 
-        res.json({ 
-          success: true, 
+        res.json({
+          success: true,
           crafted: item,
           count: count
         });
@@ -862,7 +883,7 @@ class MinecraftBotServer {
       }
 
       const { item, destination = 'hand' } = req.body;
-      
+
       if (!item) {
         return res.status(400).json({ error: 'item name required' });
       }
@@ -886,13 +907,13 @@ class MinecraftBotServer {
       }
 
       const { instructions, stopOnError = true } = req.body;
-      
+
       if (!instructions || !Array.isArray(instructions)) {
         return res.status(400).json({ error: 'instructions array required' });
       }
 
       const results = [];
-      
+
       for (let i = 0; i < instructions.length; i++) {
         const instruction = instructions[i];
         const result = {
@@ -907,20 +928,20 @@ class MinecraftBotServer {
           const response = await this.executeInstruction(instruction);
           result.success = true;
           result.response = response;
-          this.logEvent('batch_instruction', { 
-            index: i, 
+          this.logEvent('batch_instruction', {
+            index: i,
             type: instruction.type,
-            success: true 
+            success: true
           });
         } catch (error) {
           result.error = error.message;
-          this.logEvent('batch_instruction', { 
-            index: i, 
+          this.logEvent('batch_instruction', {
+            index: i,
             type: instruction.type,
             success: false,
-            error: error.message 
+            error: error.message
           });
-          
+
           if (stopOnError) {
             results.push(result);
             return res.json({
@@ -931,9 +952,9 @@ class MinecraftBotServer {
             });
           }
         }
-        
+
         results.push(result);
-        
+
         // Add delay between instructions to prevent overwhelming the bot
         if (instruction.delay) {
           await new Promise(resolve => setTimeout(resolve, instruction.delay));
@@ -954,17 +975,17 @@ class MinecraftBotServer {
     this.app.post('/program/exec', async (req, res) => {
       try {
         const { source, capabilities = [], args = {}, timeout = 900000, seed = 1 } = req.body;
-        
+
         if (!this.isConnected()) {
           return res.status(503).json({
             success: false,
             error: 'Bot is not connected to server'
           });
         }
-        
+
         const ProgramRunner = require('./program-system/runner');
         const runId = `run-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-        
+
         const runner = new ProgramRunner(this, {
           runId,
           programName: 'temp_' + Date.now(),
@@ -975,9 +996,9 @@ class MinecraftBotServer {
           capabilities,
           seed
         });
-        
+
         const result = await runner.execute();
-        
+
         res.json(result);
       } catch (error) {
         res.status(500).json({
@@ -990,13 +1011,13 @@ class MinecraftBotServer {
     this.app.post('/program/add', async (req, res) => {
       try {
         const { name, source } = req.body;
-        
+
         const ProgramRegistry = require('./program-system/registry');
         const registry = new ProgramRegistry(this.configManager);
         await registry.initStorage();
-        
+
         await registry.add(name, source);
-        
+
         res.json({ success: true, message: `Program '${name}' added successfully` });
       } catch (error) {
         res.status(400).json({ success: false, error: error.message });
@@ -1008,7 +1029,7 @@ class MinecraftBotServer {
         const ProgramRegistry = require('./program-system/registry');
         const registry = new ProgramRegistry(this.configManager);
         await registry.initStorage();
-        
+
         const programs = await registry.list();
         res.json({ success: true, programs });
       } catch (error) {
@@ -1021,7 +1042,7 @@ class MinecraftBotServer {
         const ProgramRegistry = require('./program-system/registry');
         const registry = new ProgramRegistry(this.configManager);
         await registry.initStorage();
-        
+
         await registry.remove(req.params.name);
         res.json({ success: true, message: `Program '${req.params.name}' removed successfully` });
       } catch (error) {
@@ -1032,46 +1053,46 @@ class MinecraftBotServer {
 
   async executeInstruction(instruction) {
     const { type, params = {} } = instruction;
-    
+
     switch (type) {
       case 'move': {
         const { x, y, z, sprint, relative } = params;
-        
+
         // Handle relative movement
         if (relative) {
           const { forward, backward, left, right, up, down } = relative;
           const Vec3 = require('vec3');
-          
+
           // Clear any existing movement states first
           this.bot.clearControlStates();
-          
+
           // Calculate target position based on bot's current orientation
           let targetPosition = this.bot.entity.position.clone();
-          
+
           // Get the bot's looking direction
           const yaw = this.bot.entity.yaw;
-          
+
           // Calculate movement vector based on yaw
           if (forward > 0 || backward > 0) {
             const distance = forward > 0 ? forward : -backward;
             targetPosition.x += -Math.sin(yaw) * distance;
             targetPosition.z += Math.cos(yaw) * distance;
           }
-          
+
           if (left > 0 || right > 0) {
             const distance = right > 0 ? right : -left;
             // Strafe perpendicular to looking direction
             targetPosition.x += Math.cos(yaw) * distance;
             targetPosition.z += Math.sin(yaw) * distance;
           }
-          
+
           if (up > 0 || down > 0) {
             targetPosition.y += up > 0 ? up : -down;
           }
-          
+
           // Enable sprint if requested
           if (sprint) this.bot.setControlState('sprint', true);
-          
+
           // Try pathfinding for accurate movement
           try {
             await this.bot.pathfinder.goto(new require('mineflayer-pathfinder').goals.GoalNear(
@@ -1080,8 +1101,8 @@ class MinecraftBotServer {
               targetPosition.z,
               0
             ));
-            return { 
-              moved: true, 
+            return {
+              moved: true,
               moved_to: {
                 x: Math.floor(targetPosition.x),
                 y: Math.floor(targetPosition.y),
@@ -1091,20 +1112,20 @@ class MinecraftBotServer {
           } catch (error) {
             // Fallback to simple movement if pathfinding fails
             const timeout = Math.max(1000, Math.abs(forward || backward || left || right || 0) * 250);
-            
+
             // Set control states for movement
             if (forward > 0) this.bot.setControlState('forward', true);
             if (backward > 0) this.bot.setControlState('back', true);
             if (left > 0) this.bot.setControlState('left', true);
             if (right > 0) this.bot.setControlState('right', true);
             if (up > 0) this.bot.setControlState('jump', true);
-            
+
             // Wait for movement then stop
             await new Promise(resolve => setTimeout(resolve, timeout));
             this.bot.clearControlStates();
-            
-            return { 
-              moved: true, 
+
+            return {
+              moved: true,
               method: 'simple_movement',
               duration_ms: timeout
             };
@@ -1120,27 +1141,27 @@ class MinecraftBotServer {
           return { moved: true };
         }
       }
-        
+
       case 'stop':
         this.bot.clearControlStates();
         return { stopped: true };
-        
+
       case 'look': {
         const { yaw, pitch, relative, cardinal } = params;
-        
+
         // Handle relative turn
         if (relative) {
           const { yaw_delta, pitch_delta } = relative;
           const currentYaw = this.bot.entity.yaw;
           const currentPitch = this.bot.entity.pitch;
-          
+
           // Convert degrees to radians and apply
           const newYaw = currentYaw + (yaw_delta || 0) * Math.PI / 180;
-          const newPitch = Math.max(-Math.PI/2, Math.min(Math.PI/2, 
+          const newPitch = Math.max(-Math.PI/2, Math.min(Math.PI/2,
             currentPitch + (pitch_delta || 0) * Math.PI / 180));
-          
+
           this.bot.look(newYaw, newPitch, true);
-          return { 
+          return {
             looked: true,
             turned: {
               yaw_degrees: yaw_delta || 0,
@@ -1167,7 +1188,7 @@ class MinecraftBotServer {
             default:
               throw new Error('Invalid cardinal direction');
           }
-          
+
           this.bot.look(targetYaw, 0, true);
           return { looked: true, direction: cardinal };
         }
@@ -1178,12 +1199,12 @@ class MinecraftBotServer {
         }
         throw new Error('Provide yaw/pitch, relative turn, or cardinal direction');
       }
-        
+
       case 'chat':
         if (!params.message) throw new Error('message required');
         this.bot.chat(params.message);
         return { sent: true };
-        
+
       case 'dig':
         const Vec3 = require('vec3');
         if (params.x === undefined || params.y === undefined || params.z === undefined) {
@@ -1193,14 +1214,14 @@ class MinecraftBotServer {
         if (!blockToDig) throw new Error('No block at position');
         await this.bot.dig(blockToDig);
         return { dug: true, block: blockToDig.name };
-        
+
       case 'place':
         if (params.x === undefined || params.y === undefined || params.z === undefined || !params.blockName) {
           throw new Error('x, y, z coordinates and blockName required');
         }
         const itemToPlace = this.bot.inventory.items().find(i => i.name === params.blockName);
         if (!itemToPlace) throw new Error(`No ${params.blockName} in inventory`);
-        
+
         await this.bot.equip(itemToPlace, 'hand');
         const refBlock = this.bot.blockAt(new Vec3(params.x, params.y, params.z));
         if (!refBlock || refBlock.name === 'air') {
@@ -1208,61 +1229,150 @@ class MinecraftBotServer {
         }
         await this.bot.placeBlock(refBlock, new Vec3(0, 1, 0));
         return { placed: true };
-        
+
       case 'craft':
         const { item, count = 1, craftingTable = false } = params;
         if (!item) throw new Error('item name required');
-        
+
         const itemId = this.bot.registry.itemsByName[item]?.id;
         if (!itemId) throw new Error(`Unknown item: ${item}`);
-        
-        const recipes = this.bot.recipesFor(itemId, null, 1, craftingTable);
+
+        const recipes = this.bot.recipesFor(itemId, null, count, craftingTable);
         if (!recipes || recipes.length === 0) {
           throw new Error(`No recipes available for ${item}`);
         }
-        
+
         const recipe = recipes[0];
+        const resultCount = recipe.result?.count || (Array.isArray(recipe.result?.items) ? recipe.result.items[0]?.count : 1) || 1;
+        const craftsNeeded = Math.max(1, Math.ceil(count / resultCount));
+        const producedCount = resultCount * craftsNeeded;
         if (recipe.requiresTable && !craftingTable) {
           const table = this.bot.findBlock({
             matching: this.bot.registry.blocksByName.crafting_table?.id,
             maxDistance: 6
           });
           if (!table) throw new Error('Recipe requires crafting table but none found nearby');
-          await this.bot.craft(recipe, count, table);
+          await this.bot.craft(recipe, craftsNeeded, table);
         } else {
-          await this.bot.craft(recipe, count, null);
+          await this.bot.craft(recipe, craftsNeeded, null);
         }
-        return { crafted: item, count };
-        
+        return { crafted: item, count: producedCount };
+
       case 'equip':
         if (!params.item) throw new Error('item name required');
         const itemToEquip = this.bot.inventory.items().find(i => i.name === params.item);
         if (!itemToEquip) throw new Error(`No ${params.item} in inventory`);
         await this.bot.equip(itemToEquip, params.destination || 'hand');
         return { equipped: params.item };
-        
+
       case 'wait':
         const duration = params.duration || 1000;
         await new Promise(resolve => setTimeout(resolve, duration));
         return { waited: duration };
-        
-      case 'goto':
+
+      case 'goto': {
+        const Vec3 = require('vec3');
+
         if (params.x === undefined || params.y === undefined || params.z === undefined) {
           throw new Error('x, y, z coordinates required');
         }
-        const goal = new Vec3(params.x, params.y, params.z);
-        const distance = this.bot.entity.position.distanceTo(goal);
-        if (distance > 100) {
-          throw new Error('Target too far away (max 100 blocks)');
+
+        if (!this.bot || !this.bot.entity) {
+          throw new Error('Bot is not connected');
         }
-        // Simple movement toward goal
-        const dx = params.x - this.bot.entity.position.x;
-        const dz = params.z - this.bot.entity.position.z;
-        this.bot.setControlState('forward', dx > 0.5 || dz > 0.5);
-        await new Promise(resolve => setTimeout(resolve, Math.min(distance * 100, 5000)));
-        this.bot.clearControlStates();
-        return { moved_toward: goal };
-        
+
+        if (!this.bot.pathfinder) {
+          throw new Error('Pathfinder plugin is not initialized');
+        }
+
+        const target = new Vec3(params.x, params.y, params.z);
+        const tolerance = typeof params.tolerance === 'number' ? Math.max(0, params.tolerance) : 1;
+        const precise = params.precise === true;
+        const timeout = typeof params.timeout === 'number' ? params.timeout : 30000;
+        const maxDistance = typeof params.maxDistance === 'number' ? params.maxDistance : null;
+        const allowDig = params.allowDig === true;
+        const avoidHoles = params.avoidHoles === true;
+        const allow1by1 = params.allow1by1 === true;
+        const allowParkour = params.allowParkour !== undefined ? !!params.allowParkour : !avoidHoles;
+        const allowSprinting = params.allowSprinting !== undefined ? !!params.allowSprinting : true;
+        const allowFreeMotion = params.allowFreeMotion === true;
+        const maxDrop = params.maxDrop !== undefined ? Math.max(0, params.maxDrop) : null;
+
+        const distance = this.bot.entity.position.distanceTo(target);
+        if (maxDistance !== null && distance > maxDistance) {
+          throw new Error(`Target too far away (max ${maxDistance} blocks)`);
+        }
+
+        const version = this.bot.version || this.config?.version || '1.21.1';
+        let mcData;
+        try {
+          mcData = minecraftData(version);
+        } catch (dataError) {
+          throw new Error(`Unsupported Minecraft version for pathfinding: ${version}`);
+        }
+        const movements = new Movements(this.bot, mcData);
+        movements.canDig = allowDig;
+        movements.allow1by1towers = allow1by1;
+        movements.allowParkour = allowParkour;
+        movements.allowSprinting = allowSprinting;
+        movements.allowFreeMotion = allowFreeMotion;
+
+        if (maxDrop !== null) {
+          movements.maxDropDown = maxDrop;
+        } else if (avoidHoles) {
+          movements.maxDropDown = Math.min(movements.maxDropDown, 1);
+        }
+
+        if (avoidHoles) {
+          movements.allowParkour = false;
+        }
+
+        this.bot.pathfinder.setMovements(movements);
+
+        const goal = precise
+          ? new goals.GoalBlock(target.x, target.y, target.z)
+          : new goals.GoalNear(target.x, target.y, target.z, Math.max(0.5, tolerance));
+
+        const start = Date.now();
+        let timeoutHandle;
+
+        try {
+          await Promise.race([
+            this.bot.pathfinder.goto(goal),
+            new Promise((_, reject) => {
+              timeoutHandle = setTimeout(() => reject(new Error('Pathfinding timeout')), timeout);
+            })
+          ]);
+        } catch (error) {
+          const message = error?.message || 'Unknown pathfinding error';
+          throw new Error(`Failed to pathfind to target: ${message}`);
+        } finally {
+          if (timeoutHandle) {
+            clearTimeout(timeoutHandle);
+          }
+          this.bot.pathfinder.setGoal(null);
+        }
+
+        const finalPos = this.bot.entity.position.clone();
+        const arrivedDistance = finalPos.distanceTo(target);
+        const arrived = precise
+          ? arrivedDistance < 0.6
+          : arrivedDistance <= Math.max(0.5, tolerance + 0.5);
+
+        return {
+          moved: true,
+          arrived,
+          distanceTravelled: distance,
+          finalDistance: arrivedDistance,
+          duration_ms: Date.now() - start,
+          position: {
+            x: finalPos.x,
+            y: finalPos.y,
+            z: finalPos.z
+          }
+        };
+      }
+
       default:
         throw new Error(`Unknown instruction type: ${type}`);
     }
@@ -1317,7 +1427,7 @@ class MinecraftBotServer {
       for (let dz = -renderRadius; dz <= renderRadius; dz++) {
         const worldX = Math.floor(pos.x) + dx;
         const worldZ = Math.floor(pos.z) + dz;
-        
+
         let block = null;
         for (let dy = 0; dy >= -5; dy--) {
           const worldY = Math.floor(pos.y) + dy;
@@ -1327,11 +1437,11 @@ class MinecraftBotServer {
             break;
           }
         }
-        
+
         if (block) {
           const screenX = dx * blockSize;
           const screenY = dz * blockSize;
-          
+
           const blockColors = {
             'grass_block': '#7CBD6B',
             'grass': '#7CBD6B',
@@ -1354,7 +1464,7 @@ class MinecraftBotServer {
             'ice': '#B0E0E6',
             'clay': '#A0A0A0'
           };
-          
+
           ctx.fillStyle = blockColors[block.name] || '#666666';
           ctx.fillRect(screenX - blockSize/2, screenY - blockSize/2, blockSize, blockSize);
           ctx.strokeStyle = '#000000';
@@ -1388,7 +1498,7 @@ class MinecraftBotServer {
     ctx.font = '14px Arial';
     ctx.fillText('Nearby Entities:', 20, y);
     y += 20;
-    
+
     entities.forEach(entity => {
       const dist = pos.distanceTo(entity.position);
       const name = entity.name || entity.displayName || entity.type;
@@ -1405,7 +1515,7 @@ class MinecraftBotServer {
       console.log(`Bot server listening on port ${port}`);
       console.log(`Connecting to Minecraft server: ${botConfig.host}:${botConfig.port}`);
     });
-    
+
     // Setup bot after server is listening
     await this.setupBot(botConfig);
   }
