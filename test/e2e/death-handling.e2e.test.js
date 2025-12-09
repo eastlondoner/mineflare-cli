@@ -1,4 +1,4 @@
-const { describe, it, expect, beforeAll, afterAll } = require('bun:test');
+const { describe, it, expect, beforeAll, afterAll, setDefaultTimeout } = require('bun:test');
 const { spawn } = require('child_process');
 const path = require('path');
 const { promisify } = require('util');
@@ -15,15 +15,30 @@ const apiClient = axios.create({
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
+const readServerPort = (serverDir) => {
+  try {
+    const props = fs.readFileSync(path.join(serverDir, 'server.properties'), 'utf8');
+    const match = props.match(/^server-port=(\d+)/m);
+    return match ? parseInt(match[1], 10) : 25565;
+  } catch (err) {
+    console.warn('[TEST] Unable to read server port, defaulting to 25565:', err.message);
+    return 25565;
+  }
+};
+
+setDefaultTimeout(60000);
+
 describe('E2E: Death Handling', () => {
   let botServerProcess;
   let minecraftServerProcess;
+  let mcPort = 25565;
   const mineflareCmd = path.join(process.cwd(), 'mineflare');
   const javaBin = (process.env.JAVA_BIN && fs.existsSync(process.env.JAVA_BIN))
     ? process.env.JAVA_BIN
     : 'java';
-  
-beforeAll(async () => {
+  const mcServerDir = path.join(process.cwd(), 'minecraft-server');
+ 
+  beforeAll(async () => {
     console.log('Starting test environment...');
     
     // Kill any existing servers
@@ -32,22 +47,60 @@ beforeAll(async () => {
     } catch (e) {}
     await sleep(1000);
     
+    // Ensure previous PaperMC instance is not running
+    const paperPidFile = path.join(mcServerDir, 'paper.pid');
+    if (fs.existsSync(paperPidFile)) {
+      try {
+        const existingPid = parseInt(fs.readFileSync(paperPidFile, 'utf8'));
+        if (!Number.isNaN(existingPid)) {
+          try {
+            process.kill(existingPid, 'SIGTERM');
+            console.log(`Sent SIGTERM to existing PaperMC process ${existingPid}`);
+            await sleep(2000);
+          } catch (err) {
+            console.log(`No running process for PID ${existingPid}: ${err.message}`);
+          }
+        }
+      } catch (err) {
+        console.warn('Could not inspect paper.pid:', err.message);
+      }
+      try {
+        fs.unlinkSync(paperPidFile);
+      } catch (err) {
+        console.warn('Unable to remove paper.pid:', err.message);
+      }
+    }
+    
+    const sessionLock = path.join(mcServerDir, 'world', 'session.lock');
+    if (fs.existsSync(sessionLock)) {
+      try {
+        fs.unlinkSync(sessionLock);
+        console.log('Removed stale session.lock');
+      } catch (err) {
+        console.warn('Unable to remove session.lock:', err.message);
+      }
+    }
+    
     // Start Minecraft server if not running
-    const mcServerDir = path.join(process.cwd(), 'minecraft-server');
     if (fs.existsSync(path.join(mcServerDir, 'paper-1.21.8.jar'))) {
       console.log('Starting Minecraft server...');
       minecraftServerProcess = spawn(javaBin, ['-Xmx1024M', '-Xms1024M', '-jar', 'paper-1.21.8.jar', 'nogui'], {
         cwd: mcServerDir,
         stdio: ['pipe', 'pipe', 'pipe']
       });
+      minecraftServerProcess.stdout.on('data', chunk => {
+        process.stdout.write(`[MC] ${chunk}`);
+      });
+      minecraftServerProcess.stderr.on('data', chunk => {
+        process.stderr.write(`[MC ERROR] ${chunk}`);
+      });
     
-      // Create stdin pipe
-      fs.writeFileSync(path.join(mcServerDir, 'server.stdin'), '');
-      
       // Wait for server to start
-      await sleep(10000);
+      await sleep(15000);
     }
-    
+    mcPort = readServerPort(mcServerDir);
+    console.log(`Detected Minecraft server port: ${mcPort}`);
+
     // Start bot server
     console.log('Starting bot server...');
     const pidFile = path.join(process.cwd(), '.e2e-death-handler.pid');
@@ -55,17 +108,43 @@ beforeAll(async () => {
       env: {
         ...process.env,
         JAVA_BIN: javaBin,
-        MINEFLARE_PID_FILE: pidFile
+        MINEFLARE_PID_FILE: pidFile,
+        MC_HOST: 'localhost',
+        MC_PORT: String(mcPort),
+        MC_USERNAME: 'E2EDeathBot',
+        MC_VERSION: '1.21.8',
+        MC_AUTH: 'offline',
+        MINEFLARE_SERVER_PORT: '3000',
+        ENABLE_VIEWER: 'false',
+        LOG_LEVEL: 'debug'
       },
       stdio: 'pipe'
     });
+    botServerProcess.stdout.on('data', chunk => {
+      process.stdout.write(`[BOT] ${chunk}`);
+    });
+    botServerProcess.stderr.on('data', chunk => {
+      process.stderr.write(`[BOT ERROR] ${chunk}`);
+    });
     
     // Wait for bot to connect
-    await sleep(5000);
+    const startTime = Date.now();
+    let connected = false;
+    while (Date.now() - startTime < 30000) {
+      try {
+        const health = await apiClient.get('/health');
+        if (health.data?.status === 'ok' && health.data.botConnected) {
+          connected = true;
+          break;
+        }
+      } catch (err) {
+        await sleep(1000);
+      }
+    }
     
-    // Verify bot is connected
-    const health = await apiClient.get('/health');
-    expect(health.data.botConnected).toBe(true);
+    if (!connected) {
+      throw new Error('Bot server failed to report healthy/connected within timeout');
+    }
   });
   
   afterAll(async () => {
@@ -77,10 +156,12 @@ beforeAll(async () => {
     }
     
     if (minecraftServerProcess) {
+      minecraftServerProcess.stdin?.write('stop\n');
+      await sleep(2000);
       minecraftServerProcess.kill('SIGTERM');
       await sleep(2000);
     }
-  }, { timeout: 30000 });
+  });
   
   describe('Death and Respawn', () => {
     it('should handle death and respawn correctly', async () => {
@@ -114,7 +195,7 @@ beforeAll(async () => {
       
       // Verify bot is still alive and connected after respawn
       const afterDeathState = await apiClient.get('/state');
-      expect(afterDeathState.data.health).toBeGreaterThan(0);
+      expect(afterDeathState.data.health?.current ?? 0).toBeGreaterThan(0);
       
       // Verify bot can still execute commands
       const moveResult = await apiClient.post('/move', {
@@ -142,14 +223,15 @@ beforeAll(async () => {
         expect(health.data.botConnected).toBe(true);
         
         const state = await apiClient.get('/state');
-        expect(state.data.health).toBeGreaterThan(0);
+        expect(state.data.health?.current ?? 0).toBeGreaterThan(0);
       }
     }, 45000);
     
     it('should not get stuck in death loop', async () => {
       // Monitor events to ensure no rapid death/respawn cycles
       const beforeEvents = await apiClient.get('/events?since=0');
-      const beforeDeathCount = beforeEvents.data.filter(e => e.type === 'death').length;
+      const beforeEventList = beforeEvents.data?.events || [];
+      const beforeDeathCount = beforeEventList.filter(e => e.type === 'death').length;
       
       // Cause a single death
       await apiClient.post('/chat', {
@@ -160,7 +242,8 @@ beforeAll(async () => {
       
       // Check events again
       const afterEvents = await apiClient.get('/events?since=0');
-      const afterDeathCount = afterEvents.data.filter(e => e.type === 'death').length;
+      const afterEventList = afterEvents.data?.events || [];
+      const afterDeathCount = afterEventList.filter(e => e.type === 'death').length;
       const deathDiff = afterDeathCount - beforeDeathCount;
       
       // Should only have 1 additional death, not multiple
@@ -168,7 +251,7 @@ beforeAll(async () => {
       
       // Bot should still be functional
       const state = await apiClient.get('/state');
-      expect(state.data.health).toBeGreaterThan(0);
+      expect(state.data.health?.current ?? 0).toBeGreaterThan(0);
     }, 20000);
   });
   
@@ -220,7 +303,7 @@ beforeAll(async () => {
       expect(health.data.botConnected).toBe(true);
       
       const state = await apiClient.get('/state');
-      expect(state.data.health).toBeGreaterThan(0);
+      expect(state.data.health?.current ?? 0).toBeGreaterThan(0);
     }, 20000);
   });
 });

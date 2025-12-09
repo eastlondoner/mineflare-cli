@@ -27,7 +27,12 @@ const program = defineProgram({
     
     // Navigate to the log
     const p = found.value.value.pos;
-    if (!(await nav.goto(p, { avoidHoles: true, maxDrop: 1 })).ok) 
+    const approachTarget = new Vec3(
+      Math.floor(p.x) + 1.5,
+      Math.floor(p.y) + 0.5,
+      Math.floor(p.z) + 0.5
+    );
+    if (!(await nav.goto(approachTarget, { avoidHoles: true, maxDrop: 1 })).ok) 
       return control.fail('Cannot reach wood');
     
     // Mine the log

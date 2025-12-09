@@ -193,7 +193,16 @@ class ProgramSandbox {
           // Handle the promise result
           Promise.resolve(executionResult)
             .then(resolve)
-            .catch(reject);
+            .catch((error) => {
+              // Treat control.success/control.fail throws as normal completions
+              if (error && typeof error === 'object') {
+                if (error.__mfSuccess || error.__mfFailure) {
+                  return resolve(error);
+                }
+              }
+              
+              reject(error);
+            });
         } catch (error) {
           reject(error);
         }
@@ -232,6 +241,25 @@ class ProgramSandbox {
     if (this.abortController) {
       this.abortController.abort();
     }
+  }
+  
+  static inspectProgram(source) {
+    const sandbox = new ProgramSandbox([], 5000);
+    const result = sandbox.validateProgram(source);
+    
+    if (!result.valid) {
+      throw new ProgramError(
+        ErrorCode.OPERATION_FAILED,
+        result.error || 'Program validation failed'
+      );
+    }
+    
+    return result.metadata || {
+      name: 'unnamed-program',
+      version: '1.0.0',
+      capabilities: [],
+      defaults: {}
+    };
   }
   
   injectSDK() {
@@ -314,6 +342,9 @@ class ProgramSandbox {
         sleep
       };
       
+      // Backwards compatible alias for legacy programs
+      globalThis.sdk = globalThis.mineflareSDK;
+      
       // Make SDK components directly available on globalThis for convenience
       globalThis.ok = ok;
       globalThis.fail = fail;
@@ -335,15 +366,18 @@ class ProgramSandbox {
       // Use real setTimeout on host side, but execute callback in sandbox
       setTimeout(() => {
         try {
+          // Use IIFE to avoid variable name conflicts when multiple timers fire
           const timerCode = `
-            const timer = globalThis.__timers.callbacks.get(${id});
-            if (timer && timer.type === '${type}') {
-              globalThis.__timers.callbacks.delete(${id});
-              const callback = timer.callback;
-              if (typeof callback === 'function') {
-                callback();
+            (function() {
+              const timer = globalThis.__timers.callbacks.get(${id});
+              if (timer && timer.type === '${type}') {
+                globalThis.__timers.callbacks.delete(${id});
+                const callback = timer.callback;
+                if (typeof callback === 'function') {
+                  callback();
+                }
               }
-            }
+            })();
           `;
           vm.runInContext(timerCode, this.context);
         } catch (error) {

@@ -212,13 +212,16 @@ class ContextBuilder {
     if (this.capabilities.has('move') || this.capabilities.has('pathfind')) {
       actions.navigate = {
         goto: async (target, opts = {}) => {
+          console.log(`[CTX-NAVIGATE] goto called: target=(${target?.x?.toFixed(1)}, ${target?.y?.toFixed(1)}, ${target?.z?.toFixed(1)}), timeout=${opts.timeoutMs}`);
           this.budget.check('move');
 
           if (!this.botServer || !this.botServer.isConnected()) {
+            console.log('[CTX-NAVIGATE] Bot not connected!');
             throw new ProgramError(ErrorCode.BOT_DISCONNECTED, 'Bot is not connected');
           }
 
           try {
+            console.log('[CTX-NAVIGATE] Building params...');
             const params = {
               x: target.x,
               y: target.y,
@@ -246,10 +249,12 @@ class ContextBuilder {
               }
             }
 
+            console.log('[CTX-NAVIGATE] Calling executeInstruction...');
             const result = await this.botServer.executeInstruction({
               type: 'goto',
               params
             });
+            console.log('[CTX-NAVIGATE] executeInstruction returned:', result?.moved);
 
             return result;
           } catch (error) {

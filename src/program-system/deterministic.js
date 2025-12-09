@@ -9,13 +9,11 @@ class DeterministicSearch {
   }
   
   // Generate positions in an expanding square pattern
-  generateExpandingSquare(radius) {
+  generateExpandingSquare(radius, centerPosition) {
     const positions = [];
     
-    // Start from center (0, seaLevel, 0) relative to bot position
-    const center = this.botServer.bot ? 
-      this.botServer.bot.entity.position : 
-      new Vec3(0, this.seaLevel, 0);
+    // Use provided center or default to origin at sea level
+    const center = centerPosition || new Vec3(0, this.seaLevel, 0);
     
     // Generate rings outward
     for (let ring = 0; ring <= radius; ring++) {
@@ -71,19 +69,25 @@ class DeterministicSearch {
   
   // Deterministic expanding square search
   async expandSquare({ radius, predicate, ringCallback, navigate }) {
-    if (!this.botServer.bot) {
+    if (!this.botServer || !this.botServer.isConnected()) {
       throw new ProgramError(ErrorCode.BOT_DISCONNECTED, 'Bot is not connected');
     }
     
-    const positions = this.generateExpandingSquare(radius);
+    const state = await this.botServer.getState();
+    const origin = state.position
+      ? new Vec3(state.position.x, state.position.y, state.position.z)
+      : new Vec3(0, this.seaLevel, 0);
+    
+    const positions = this.generateExpandingSquare(radius, origin);
+    
     let currentRing = 0;
     let positionsVisited = 0;
     
     for (const position of positions) {
       // Calculate which ring this position belongs to
       const ring = Math.max(
-        Math.abs(position.x - this.botServer.bot.entity.position.x),
-        Math.abs(position.z - this.botServer.bot.entity.position.z)
+        Math.abs(position.x - origin.x),
+        Math.abs(position.z - origin.z)
       );
       
       // Notify about ring completion
@@ -132,7 +136,7 @@ class DeterministicSearch {
   }
   
   // Deterministic pathfinding with fixed neighbor ordering
-  deterministicPathfind(start, goal, options = {}) {
+  async deterministicPathfind(start, goal, options = {}) {
     const maxIterations = options.maxIterations || 10000;
     const maxDrop = options.maxDrop || 4;
     const avoidHoles = options.avoidHoles || true;
@@ -182,7 +186,7 @@ class DeterministicSearch {
       openSet.splice(currentIndex, 1);
       
       // Check neighbors in deterministic order
-      const neighbors = this.getNeighbors(current, { maxDrop, avoidHoles });
+      const neighbors = await this.getNeighbors(current, { maxDrop, avoidHoles });
       
       for (const neighbor of neighbors) {
         const neighborKey = posKey(neighbor);
@@ -211,7 +215,7 @@ class DeterministicSearch {
   }
   
   // Get neighbors in deterministic order
-  getNeighbors(position, options = {}) {
+  async getNeighbors(position, options = {}) {
     const neighbors = [];
     
     // Fixed order: North, East, South, West, Up, Down
@@ -232,7 +236,7 @@ class DeterministicSearch {
       );
       
       // Check if neighbor is valid
-      if (this.isValidPosition(neighbor, position, options)) {
+      if (await this.isValidPosition(neighbor, position, options)) {
         neighbors.push(neighbor);
       }
     }
@@ -241,14 +245,14 @@ class DeterministicSearch {
   }
   
   // Check if a position is valid for pathfinding
-  isValidPosition(position, fromPosition, options = {}) {
-    if (!this.botServer.bot) return false;
+  async isValidPosition(position, fromPosition, options = {}) {
+    if (!this.botServer || !this.botServer.isConnected()) return false;
     
-    const block = this.botServer.bot.blockAt(position);
+    const block = await this.botServer.blockAt(position);
     if (!block) return false;
     
     // Check if we can stand on this block
-    const blockBelow = this.botServer.bot.blockAt(
+    const blockBelow = await this.botServer.blockAt(
       position.offset(0, -1, 0)
     );
     

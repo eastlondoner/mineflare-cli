@@ -42,14 +42,18 @@
   "license": "ISC",
   "description": "AI-controlled Minecraft bot with HTTP API and CLI interface",
   "dependencies": {
+    "@cursor-ai/january": "^0.2.1",
     "axios": "^1.12.2",
     "canvas": "^3.2.0",
     "chalk": "^5.6.2",
     "cli-table3": "^0.6.5",
     "commander": "^14.0.1",
     "express": "^5.1.0",
+    "minecraft-data": "^3.75.0",
     "mineflayer": "^4.33.0",
+    "mineflayer-pathfinder": "^2.4.5",
     "prismarine-viewer": "^1.33.0",
+    "rcon-client": "^4.2.5",
     "supertest": "^7.1.4"
   }
 }

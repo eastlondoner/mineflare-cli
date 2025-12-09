@@ -354,20 +354,50 @@ process.on('message', (msg) => {
 
           const start = Date.now();
           let timeoutHandle;
+          let pathFound = false;
+
+          console.log(`[BOT-PATHFIND] Starting goto (${target.x.toFixed(1)}, ${target.y.toFixed(1)}, ${target.z.toFixed(1)}), timeout=${timeout}ms`);
+
+          // Track path updates
+          let emptyPathCount = 0;
+          
+          // Add pathfinding event listeners for debugging
+          const onPathUpdate = (path) => {
+            const nodeCount = path?.length || 0;
+            if (!pathFound) {
+              pathFound = true;
+              console.log(`[BOT-PATHFIND] Path calculated in ${Date.now() - start}ms, ${nodeCount} nodes`);
+            }
+            
+            // Track consecutive empty paths
+            if (nodeCount === 0) {
+              emptyPathCount++;
+              console.log(`[BOT-PATHFIND] Empty path #${emptyPathCount}`);
+            } else {
+              emptyPathCount = 0;
+            }
+          };
+          bot.on('path_update', onPathUpdate);
 
           try {
             await Promise.race([
               bot.pathfinder.goto(goal),
               new Promise((_, reject) => {
                 timeoutHandle = setTimeout(() => {
+                  console.log(`[BOT-PATHFIND] TIMEOUT! elapsed=${Date.now() - start}ms, pathFound=${pathFound}, emptyPaths=${emptyPathCount}`);
                   reject(new Error('Pathfinding timeout'));
                 }, timeout);
               })
             ]);
+            console.log(`[BOT-PATHFIND] Completed in ${Date.now() - start}ms`);
+          } catch (err) {
+            console.log(`[BOT-PATHFIND] Error after ${Date.now() - start}ms: ${err.message}`);
+            throw err;
           } finally {
             if (timeoutHandle) {
               clearTimeout(timeoutHandle);
             }
+            bot.removeListener('path_update', onPathUpdate);
             bot.pathfinder.setGoal(null);
           }
 
@@ -716,6 +746,7 @@ process.on('message', (msg) => {
 
                 const radiusLimit = Math.min(Math.max(1, radius), 64);
                 const maxResults = Math.min(Math.max(1, max), 512);
+                const radiusSq = radiusLimit * radiusLimit;
 
                 const centerVec = new Vec3(
                   toSafeNumber(center.x, Math.floor(bot.entity.position.x)),
@@ -724,10 +755,14 @@ process.on('message', (msg) => {
                 );
 
                 const matched = [];
-                outer:
+                // Scan all blocks in the cubic region
                 for (let dx = -radiusLimit; dx <= radiusLimit; dx++) {
                   for (let dy = -radiusLimit; dy <= radiusLimit; dy++) {
                     for (let dz = -radiusLimit; dz <= radiusLimit; dz++) {
+                      // Check actual spherical distance (squared to avoid sqrt)
+                      const distSq = dx * dx + dy * dy + dz * dz;
+                      if (distSq > radiusSq) continue;
+
                       const candidate = centerVec.offset(dx, dy, dz);
                       const block = bot.blockAt(candidate);
                       if (!block || !block.name) continue;
@@ -739,23 +774,28 @@ process.on('message', (msg) => {
                       matched.push({
                         name: block.name,
                         hardness: block.hardness,
+                        distanceSq: distSq,
                         position: {
                           x: candidate.x,
                           y: candidate.y,
                           z: candidate.z
                         }
                       });
-
-                      if (matched.length >= maxResults) {
-                        break outer;
-                      }
                     }
                   }
                 }
 
+                // Sort by distance (nearest first) and limit results
+                matched.sort((a, b) => a.distanceSq - b.distanceSq);
+                const results = matched.slice(0, maxResults).map(block => ({
+                  name: block.name,
+                  hardness: block.hardness,
+                  position: block.position
+                }));
+
                 process.send({
                   type: 'scan_blocks_response',
-                  blocks: matched
+                  blocks: results
                 });
               } catch (error) {
                 process.send({ type: 'scan_blocks_response', error: error.message });

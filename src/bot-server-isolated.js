@@ -758,6 +758,96 @@ class IsolatedBotServer {
     });
   }
 
+  async getLiveState(timeoutMs = 5000) {
+    const stateMsg = await this.requestBotResponse(
+      'get_state',
+      'state_response',
+      {},
+      timeoutMs
+    );
+    
+    if (stateMsg?.state?.position) {
+      this.botState.position = new Vec3(
+        stateMsg.state.position.x,
+        stateMsg.state.position.y,
+        stateMsg.state.position.z
+      );
+      this.botState.health = stateMsg.state?.health?.current ?? this.botState.health;
+      this.botState.food = stateMsg.state?.food?.current ?? this.botState.food;
+      this.botState.oxygen = stateMsg.state?.oxygen?.current ?? this.botState.oxygen;
+      this.botState.orientation = {
+        yaw: stateMsg.state?.orientation?.yaw ?? this.botState.orientation.yaw,
+        pitch: stateMsg.state?.orientation?.pitch ?? this.botState.orientation.pitch
+      };
+    }
+    
+    return stateMsg?.state || {};
+  }
+  
+  async getLiveInventory(timeoutMs = 5000) {
+    const inventoryMsg = await this.requestBotResponse(
+      'get_inventory',
+      'inventory_response',
+      {},
+      timeoutMs
+    );
+    return inventoryMsg?.items || [];
+  }
+  
+  async getBlockAt(position, timeoutMs = 5000) {
+    const response = await this.requestBotResponse(
+      'block_at',
+      'block_at_response',
+      {
+        x: position.x,
+        y: position.y,
+        z: position.z
+      },
+      timeoutMs
+    );
+    return response.block || null;
+  }
+  
+  async scanBlocksAround(center, options = {}) {
+    const payload = {
+      center: {
+        x: center.x,
+        y: center.y,
+        z: center.z
+      },
+      kinds: options.kinds || [],
+      radius: options.radius || 8,
+      max: options.max || 100
+    };
+    
+    const response = await this.requestBotResponse(
+      'scan_blocks',
+      'scan_blocks_response',
+      payload,
+      Math.max(5000, (options.radius || 8) * 300)
+    );
+    
+    return response.blocks || [];
+  }
+  
+  async getWorldTime() {
+    const state = await this.getLiveState();
+    const timeInfo = state.environment?.time ?? {};
+    
+    if (typeof timeInfo.dayTime === 'number') {
+      return {
+        dayTime: timeInfo.dayTime,
+        isDay: timeInfo.isDay ?? (timeInfo.dayTime >= 0 && timeInfo.dayTime < 12000)
+      };
+    }
+    
+    const dayTime = state.time?.dayTime ?? state.time?.timeOfDay ?? 0;
+    return {
+      dayTime,
+      isDay: dayTime >= 0 && dayTime < 12000
+    };
+  }
+  
   async fetchProgramSnapshot() {
     if (!this.botState.connected) {
       throw new ProgramError(
@@ -827,11 +917,28 @@ class IsolatedBotServer {
         displayName: item.displayName
       }))
     };
-
+    
     const botProxy = {
       isConnected: () => server.botState.connected,
       executeInstruction: async (instruction) => {
         return server.executeProgramInstruction(instruction);
+      },
+      getState: async () => {
+        return server.getLiveState();
+      },
+      getInventory: async () => {
+        return server.getLiveInventory();
+      },
+      blockAt: async (position) => {
+        return server.getBlockAt(position);
+      },
+      scanBlocks: async (options = {}) => {
+        const currentState = await server.getLiveState();
+        const center = options.center || currentState.position || safePosition;
+        return server.scanBlocksAround(center, options);
+      },
+      getTime: async () => {
+        return server.getWorldTime();
       },
       bot: {
         entity: {
@@ -850,16 +957,10 @@ class IsolatedBotServer {
         time: {
           timeOfDay: timeOfDayEstimate,
           isDay: state.environment?.time_of_day === 'Day'
-        },
-        blockAt: (pos) => {
-          throw new ProgramError(
-            ErrorCode.OPERATION_FAILED,
-            'blockAt is not yet available in isolated bot mode'
-          );
         }
       }
     };
-
+    
     return botProxy;
   }
 
@@ -887,10 +988,19 @@ class IsolatedBotServer {
     );
 
     try {
+      const instructionPayload = {
+        type: instruction?.type,
+        params: { ...(instruction?.params || {}) }
+      };
+      
+      if (instructionPayload.type === 'place') {
+        instructionPayload.params.blockName = instructionPayload.params.blockName || instructionPayload.params.block;
+      }
+      
       const response = await this.requestBotResponse(
         'batch',
         'batch_response',
-        { instructions: [instruction], stopOnError: true },
+        { instructions: [instructionPayload], stopOnError: true },
         timeoutMs
       );
 

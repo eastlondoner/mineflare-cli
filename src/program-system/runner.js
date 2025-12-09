@@ -37,6 +37,43 @@ class ProgramRunner {
     this.startTime = Date.now();
     
     try {
+      // Inspect program metadata to obtain declared capabilities and defaults
+      const inspectedMetadata = ProgramSandbox.inspectProgram(this.source);
+      
+      // Prefer declared program name unless explicitly overridden
+      if (!this.programName || this.programName.startsWith('temp_')) {
+        this.programName = inspectedMetadata.name || this.programName;
+      }
+      
+      // Merge metadata with inspected values (inspected values take precedence)
+      const existingMetadata = this.metadata || {};
+      this.metadata = {
+        ...existingMetadata,
+        ...inspectedMetadata,
+        defaults: {
+          ...(inspectedMetadata.defaults || {}),
+          ...(existingMetadata.defaults || {})
+        }
+      };
+      
+      const requiredCaps = new Set(inspectedMetadata.capabilities || []);
+      let capabilitySet = new Set(this.capabilities || []);
+      
+      if (capabilitySet.size === 0 && requiredCaps.size > 0) {
+        capabilitySet = new Set(requiredCaps);
+      }
+      
+      for (const cap of requiredCaps) {
+        if (!capabilitySet.has(cap)) {
+          throw new ProgramError(
+            ErrorCode.CAPABILITY,
+            `Program requires capability '${cap}' but it was not granted`
+          );
+        }
+      }
+      
+      this.capabilities = [...capabilitySet];
+      
       // Check bot connection using unified method
       if (!this.botServer || !this.botServer.isConnected()) {
         throw new ProgramError(
@@ -50,6 +87,7 @@ class ProgramRunner {
         this.args,
         this.metadata.defaults || {}
       );
+      this.args = mergedArgs;
       
       // Create sandbox
       this.sandbox = new ProgramSandbox(this.capabilities, this.timeout);
@@ -73,18 +111,20 @@ class ProgramRunner {
       // Execute program in sandbox
       const executionResult = await this.sandbox.execute(this.source, context);
       
+      let failureMarker = null;
+      let responsePayload = executionResult.result;
+      
       // Check for success/failure markers
       if (executionResult.result && executionResult.result.__mfSuccess) {
         this.status = ProgramStatus.SUCCEEDED;
         this.result = executionResult.result.data;
+        responsePayload = executionResult.result.data;
       } else if (executionResult.result && executionResult.result.__mfFailure) {
         this.status = ProgramStatus.FAILED;
         this.error = executionResult.result.message;
-        throw new ProgramError(
-          ErrorCode.OPERATION_FAILED,
-          executionResult.result.message,
-          executionResult.result.data
-        );
+        this.result = executionResult.result.data;
+        responsePayload = executionResult.result.data;
+        failureMarker = executionResult.result;
       } else {
         // Normal completion
         this.status = ProgramStatus.SUCCEEDED;
@@ -93,22 +133,33 @@ class ProgramRunner {
       
       this.endTime = Date.now();
       
-      // Log execution complete
-      console.log(`[PROGRAM] Execution completed successfully`);
-      console.log(`[PROGRAM] Duration: ${this.endTime - this.startTime}ms`);
-      
-      // Get final usage stats
+      const duration = this.endTime - this.startTime;
       const usage = this.contextBuilder.getUsage();
+      
+      if (failureMarker) {
+        console.warn(`[PROGRAM] Execution failed: ${failureMarker.message}`);
+      } else {
+        console.log(`[PROGRAM] Execution completed successfully`);
+      }
+      console.log(`[PROGRAM] Duration: ${duration}ms`);
       console.log(`[PROGRAM] Resource usage:`, usage);
       
-      // Return execution result
-      return {
-        success: true,
-        result: this.result,
+      const response = {
+        success: !failureMarker,
+        result: responsePayload,
         logs: executionResult.logs,
         usage,
-        duration: this.endTime - this.startTime
+        duration
       };
+      
+      if (failureMarker) {
+        response.error = failureMarker.message;
+        if (failureMarker.data !== undefined) {
+          response.data = failureMarker.data;
+        }
+      }
+      
+      return response;
     } catch (error) {
       this.status = ProgramStatus.FAILED;
       this.endTime = Date.now();

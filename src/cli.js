@@ -2,6 +2,7 @@
 
 const { Command } = require('commander');
 const axios = require('axios');
+const { CursorAgent } = require('@cursor-ai/january');
 const configManager = require('./config/ConfigManager');
 
 const program = new Command();
@@ -292,6 +293,150 @@ program
       console.log(JSON.stringify(response.data, null, 2));
     } catch (error) {
       console.error('Error:', error.message);
+    }
+  });
+
+const AGENT_SYSTEM_PROMPT = `You are a Minecraft bot batch job generator. Your task is to convert natural language instructions into a JSON batch job format that controls a Minecraft bot.
+
+## Output Format
+You must output ONLY a valid JSON array of instructions. No markdown, no explanation, just the raw JSON array.
+
+## Available Instruction Types
+
+### Movement
+- move: { "type": "move", "params": { "x": 1, "z": 0, "sprint": true } }
+  - x: forward (1) or backward (-1)
+  - z: right (1) or left (-1)
+  - y: jump if > 0
+  - sprint: boolean
+  
+- move with relative: { "type": "move", "params": { "relative": { "forward": 10, "left": 3 } } }
+  - relative.forward/backward: number of blocks
+  - relative.left/right: number of blocks
+  
+- stop: { "type": "stop" }
+
+- goto: { "type": "goto", "params": { "x": 100, "y": 64, "z": 200 } }
+
+### Looking
+- look: { "type": "look", "params": { "yaw": 0, "pitch": 0 } }
+- look cardinal: { "type": "look", "params": { "cardinal": "north" } }
+  - cardinal options: north, south, east, west
+- look relative: { "type": "look", "params": { "relative": { "yaw_delta": 90, "pitch_delta": -15 } } }
+
+### Block Operations
+- dig: { "type": "dig", "params": { "x": 10, "y": 64, "z": 10 } }
+- place: { "type": "place", "params": { "x": 10, "y": 64, "z": 10, "blockName": "stone" } }
+
+### Crafting & Equipment
+- craft: { "type": "craft", "params": { "item": "oak_planks", "count": 4, "craftingTable": false } }
+- equip: { "type": "equip", "params": { "item": "diamond_sword", "destination": "hand" } }
+
+### Communication
+- chat: { "type": "chat", "params": { "message": "Hello!" } }
+
+### Utility
+- wait: { "type": "wait", "params": { "duration": 2000 } } // milliseconds
+
+## Important Notes
+- Add "delay" field (in ms) to any instruction to pause after it executes
+- For movement over distance, use relative movement with forward/backward/left/right
+- Always add wait instructions between complex operations
+- Output ONLY the JSON array, nothing else`;
+
+program
+  .command('agent <prompt>')
+  .description('Use AI to generate and execute a batch job from natural language')
+  .option('--dry-run', 'Only generate the batch job, do not execute')
+  .option('--no-stop', 'Continue on error when executing')
+  .option('-v, --verbose', 'Show agent thinking process')
+  .action(async (prompt, options) => {
+    try {
+      if (!process.env.CURSOR_API_KEY) {
+        console.error('Error: CURSOR_API_KEY environment variable is required');
+        console.error('Set it with: export CURSOR_API_KEY=your_api_key');
+        process.exit(1);
+      }
+
+      const agent = new CursorAgent({
+        apiKey: process.env.CURSOR_API_KEY,
+        model: 'claude-4.5-sonnet',
+        workingLocation: {
+          type: 'local',
+          localDirectory: process.cwd(),
+        },
+      });
+
+      console.log('🤖 Generating batch job for:', prompt);
+      
+      const fullPrompt = `${AGENT_SYSTEM_PROMPT}
+
+User request: ${prompt}
+
+Generate the batch job JSON array now:`;
+
+      const { stream } = agent.submit({ message: fullPrompt });
+      
+      let fullResponse = '';
+      for await (const update of stream) {
+        if (update.type === 'text' && update.text) {
+          fullResponse += update.text;
+          if (options.verbose) {
+            process.stdout.write(update.text);
+          }
+        }
+      }
+      
+      if (options.verbose) {
+        console.log('\n');
+      }
+
+      // Extract JSON from response (handle potential markdown code blocks)
+      let jsonStr = fullResponse.trim();
+      const jsonMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
+      if (jsonMatch) {
+        jsonStr = jsonMatch[1].trim();
+      }
+      
+      // Also try to find just the array if there's extra text
+      const arrayMatch = jsonStr.match(/\[[\s\S]*\]/);
+      if (arrayMatch) {
+        jsonStr = arrayMatch[0];
+      }
+
+      let instructions;
+      try {
+        instructions = JSON.parse(jsonStr);
+      } catch (parseError) {
+        console.error('Error: Failed to parse generated batch job');
+        console.error('Raw response:', fullResponse);
+        process.exit(1);
+      }
+
+      if (!Array.isArray(instructions)) {
+        console.error('Error: Generated batch job is not an array');
+        process.exit(1);
+      }
+
+      console.log('\n📋 Generated batch job:');
+      console.log(JSON.stringify(instructions, null, 2));
+
+      if (options.dryRun) {
+        console.log('\n✅ Dry run complete - batch job not executed');
+        return;
+      }
+
+      console.log('\n🚀 Executing batch job...');
+      const response = await api.post('/batch', {
+        instructions,
+        stopOnError: options.stop !== false
+      });
+
+      console.log('\n✅ Execution result:');
+      console.log(JSON.stringify(response.data, null, 2));
+    } catch (error) {
+      console.error('Error:', error.message);
+      process.exit(1);
     }
   });
 

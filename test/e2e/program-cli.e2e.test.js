@@ -1,14 +1,17 @@
-const { describe, it, expect, beforeAll, afterAll } = require('@jest/globals');
+const { describe, it, expect, beforeAll, afterAll, beforeEach } = require('@jest/globals');
 const { spawn, execSync } = require('child_process');
 const path = require('path');
 const fs = require('fs').promises;
 const axios = require('axios');
+const { prepareTestArea } = require('./utils/rcon');
 
 describe('E2E: Program CLI Commands', () => {
   let serverProcess;
   const serverPort = 3457;
   const testDir = path.join(__dirname, 'fixtures', 'cli-test-programs');
   const cliPath = path.join(__dirname, '..', '..', 'mineflare');
+  let areaIndex = 0;
+  const allocateArea = () => areaIndex++;
   
   beforeAll(async () => {
     // Create test directory
@@ -29,7 +32,9 @@ describe('E2E: Program CLI Commands', () => {
     
     // Wait for server to be ready
     await waitForServer();
-  }, 30000);
+
+    await prepareTestArea({ username: 'CLITestBot', areaIndex: allocateArea() });
+  });
   
   afterAll(async () => {
     // Stop server daemon
@@ -48,6 +53,10 @@ describe('E2E: Program CLI Commands', () => {
     } catch (error) {
       // Ignore if doesn't exist
     }
+  });
+
+  beforeEach(async () => {
+    await prepareTestArea({ username: 'CLITestBot', areaIndex: allocateArea() });
   });
   
   async function createTestPrograms() {

@@ -6,6 +6,9 @@ This document provides a comprehensive guide to the testing infrastructure for t
 
 The project uses Bun's built-in test runner with comprehensive unit and integration tests to ensure code quality and reliability.
 
+> **Note on Live Server Tests**
+> End-to-end suites interact with a real Paper server running on `localhost:8099`. RCON is enabled (`localhost:25575`, password `mineflare`) so the tests can reposition the bot and prepare terrain deterministically. If you change these values, update `test/e2e/utils/rcon.js` accordingly.
+
 ### Current Test Status
 - **Total Tests**: 191 tests
 - **Passing**: 182 tests (95%)

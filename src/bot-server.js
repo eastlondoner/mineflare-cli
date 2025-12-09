@@ -1335,22 +1335,55 @@ class MinecraftBotServer {
 
         const start = Date.now();
         let timeoutHandle;
+        let pathFound = false;
+        let isMoving = false;
+
+        // Add event listeners for debugging
+        const onGoalReached = () => {
+          console.log(`[PATHFIND] Goal reached in ${Date.now() - start}ms`);
+        };
+        const onPathUpdate = (path) => {
+          if (!pathFound) {
+            pathFound = true;
+            console.log(`[PATHFIND] Path calculated in ${Date.now() - start}ms, ${path?.length || 0} nodes`);
+          }
+        };
+        const onGoalChanged = (newGoal) => {
+          console.log(`[PATHFIND] Goal changed: ${newGoal ? 'new goal set' : 'goal cleared'}`);
+        };
+
+        this.bot.on('goal_reached', onGoalReached);
+        this.bot.on('path_update', onPathUpdate);
+        this.bot.on('goal_updated', onGoalChanged);
+
+        console.log(`[PATHFIND] Starting navigation to (${target.x.toFixed(1)}, ${target.y.toFixed(1)}, ${target.z.toFixed(1)}), timeout: ${timeout}ms`);
 
         try {
           await Promise.race([
             this.bot.pathfinder.goto(goal),
             new Promise((_, reject) => {
-              timeoutHandle = setTimeout(() => reject(new Error('Pathfinding timeout')), timeout);
+              timeoutHandle = setTimeout(() => {
+                console.log(`[PATHFIND] TIMEOUT after ${timeout}ms! pathFound=${pathFound}`);
+                reject(new Error('Pathfinding timeout'));
+              }, timeout);
             })
           ]);
         } catch (error) {
+          const elapsed = Date.now() - start;
           const message = error?.message || 'Unknown pathfinding error';
+          console.log(`[PATHFIND] Failed after ${elapsed}ms: ${message}`);
           throw new Error(`Failed to pathfind to target: ${message}`);
         } finally {
           if (timeoutHandle) {
             clearTimeout(timeoutHandle);
           }
+          // Remove event listeners
+          this.bot.removeListener('goal_reached', onGoalReached);
+          this.bot.removeListener('path_update', onPathUpdate);
+          this.bot.removeListener('goal_updated', onGoalChanged);
+          // Stop pathfinder
           this.bot.pathfinder.setGoal(null);
+          console.log(`[PATHFIND] Cleanup complete, elapsed: ${Date.now() - start}ms`);
         }
 
         const finalPos = this.bot.entity.position.clone();

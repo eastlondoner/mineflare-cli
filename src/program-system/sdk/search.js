@@ -46,8 +46,9 @@ async function expandSquare(context, options) {
     onPosition = () => {},
     seed = 1
   } = options;
+  const predicateFn = predicate || options.at;
   
-  if (!predicate) {
+  if (!predicateFn) {
     return {
       ok: false,
       error: 'Predicate function is required'
@@ -90,15 +91,17 @@ async function expandSquare(context, options) {
     await onPosition(position, i);
     
     // Test predicate
-    const result = await predicate(position);
+    const result = await predicateFn(position);
     if (result && (result === true || result.found || result.ok)) {
+      const normalized = result === true ? { ok: true, value: { position } } : result;
+      if (normalized && normalized.value && normalized.value.position && !normalized.value.pos) {
+        normalized.value.pos = normalized.value.position;
+      }
       return {
         ok: true,
-        value: {
-          position,
-          result: result === true ? { found: true } : result,
-          ring: currentRing
-        },
+        value: normalized,
+        position,
+        ring: currentRing,
         stats: {
           positionsVisited,
           totalDistance,

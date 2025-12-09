@@ -94,3 +94,5 @@ lerna-debug.log*
 .cache/
 .local/
 .upm/
+# SpecStory explanation file
+.specstory/.what-is-this.md

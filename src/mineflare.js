@@ -2,10 +2,12 @@
 
 const { Command } = require('commander');
 const axios = require('axios');
+const { CursorAgent } = require('@cursor-ai/january');
 const path = require('path');
 const fs = require('fs');
 const configManager = require('./config/ConfigManager');
 const Table = require('cli-table3');
+const ProgramSandbox = require('./program-system/runtime/sandbox');
 
 function resolvePidFile() {
   const customPath = process.env.MINEFLARE_PID_FILE;
@@ -158,11 +160,15 @@ serverCmd
       
       console.log('Starting bot server as daemon...');
       
+      // Create log file for daemon output
+      const logFile = path.join(process.cwd(), 'mineflare.log');
+      const logStream = fs.openSync(logFile, 'a');
+      
       // Use bun to run the server script
       const bunPath = 'bun';
       const child = spawn(bunPath, [serverPath], {
         detached: true,
-        stdio: 'ignore',
+        stdio: ['ignore', logStream, logStream],
         env: {
           ...process.env,
           MINEFLARE_SERVER_PORT: serverConfig.server.port.toString(),
@@ -182,6 +188,7 @@ serverCmd
       
       console.log(`✓ Bot server started as daemon (PID: ${child.pid})`);
       console.log(`  PID saved to: ${pidFile}`);
+      console.log(`  Logs: ${logFile}`);
       console.log(`  Server running at: http://localhost:${serverConfig.server.port}`);
       process.exit(0);
     } else {
@@ -814,7 +821,7 @@ programCmd
   .description('Execute a program file immediately')
   .option('--profile <name>', 'Configuration profile to use')
   .option('--timeout <ms>', 'Execution timeout in milliseconds', '900000')
-  .option('--cap <capabilities>', 'Comma-separated list of capabilities', 'move,dig,place,look,inventory,craft')
+  .option('--cap <capabilities>', 'Comma-separated list of capabilities')
   .option('--arg <key=value>', 'Program arguments (can be used multiple times)', collect, [])
   .option('--dry-run', 'Simulate execution without connecting to server')
   .option('--world-snapshot <file>', 'World snapshot file for dry-run mode')
@@ -824,7 +831,22 @@ programCmd
       // Load program source
       const source = fs.readFileSync(file, 'utf8');
       const args = parseArgs(options.arg);
-      const capabilities = options.cap.split(',').map(c => c.trim());
+      
+      let capabilities = [];
+      if (options.cap) {
+        capabilities = options.cap.split(',').map(c => c.trim()).filter(Boolean);
+      } else {
+        try {
+          const metadata = ProgramSandbox.inspectProgram(source);
+          capabilities = (metadata.capabilities || []).map(c => c.trim()).filter(Boolean);
+          
+          if (capabilities.length > 0) {
+            console.log(`[PROGRAM] Using declared capabilities: ${capabilities.join(', ')}`);
+          }
+        } catch (error) {
+          console.warn(`[PROGRAM] Warning: unable to inspect program capabilities (${error.message}). Proceeding with empty capability list.`);
+        }
+      }
       
       // Check if server is running
       try {
@@ -858,12 +880,15 @@ programCmd
         console.log(JSON.stringify(result, null, 2));
       } else {
         // Real execution - use the API to execute on the running server
+        const requestTimeout = parseInt(options.timeout, 10) || config.server.timeout;
         const response = await api.post('/program/exec', {
           source,
           capabilities,
           args,
-          timeout: parseInt(options.timeout),
-          seed: parseInt(options.seed)
+          timeout: parseInt(options.timeout, 10),
+          seed: parseInt(options.seed, 10)
+        }, {
+          timeout: requestTimeout
         });
         
         const result = response.data;
@@ -1080,6 +1105,607 @@ programCmd
       console.log(table.toString());
     } catch (error) {
       console.error('Error:', error.message);
+      process.exit(1);
+    }
+  });
+
+// Agent command - AI-powered batch job generation (simple)
+const AGENT_BATCH_SYSTEM_PROMPT = `You are a Minecraft bot batch job generator. Your task is to convert natural language instructions into a JSON batch job format that controls a Minecraft bot.
+
+## Output Format
+You must output ONLY a valid JSON array of instructions. No markdown, no explanation, just the raw JSON array.
+
+## Available Instruction Types
+
+### Movement
+- move: { "type": "move", "params": { "x": 1, "z": 0, "sprint": true } }
+  - x: forward (1) or backward (-1)
+  - z: right (1) or left (-1)
+  - y: jump if > 0
+  - sprint: boolean
+  
+- move with relative: { "type": "move", "params": { "relative": { "forward": 10, "left": 3 } } }
+  - relative.forward/backward: number of blocks
+  - relative.left/right: number of blocks
+  
+- stop: { "type": "stop" }
+
+- goto: { "type": "goto", "params": { "x": 100, "y": 64, "z": 200 } }
+
+### Looking
+- look: { "type": "look", "params": { "yaw": 0, "pitch": 0 } }
+- look cardinal: { "type": "look", "params": { "cardinal": "north" } }
+  - cardinal options: north, south, east, west
+- look relative: { "type": "look", "params": { "relative": { "yaw_delta": 90, "pitch_delta": -15 } } }
+
+### Block Operations
+- dig: { "type": "dig", "params": { "x": 10, "y": 64, "z": 10 } }
+- place: { "type": "place", "params": { "x": 10, "y": 64, "z": 10, "blockName": "stone" } }
+
+### Crafting & Equipment
+- craft: { "type": "craft", "params": { "item": "oak_planks", "count": 4, "craftingTable": false } }
+- equip: { "type": "equip", "params": { "item": "diamond_sword", "destination": "hand" } }
+
+### Communication
+- chat: { "type": "chat", "params": { "message": "Hello!" } }
+
+### Utility
+- wait: { "type": "wait", "params": { "duration": 2000 } } // milliseconds
+
+## Important Notes
+- Add "delay" field (in ms) to any instruction to pause after it executes
+- For movement over distance, use relative movement with forward/backward/left/right
+- Always add wait instructions between complex operations
+- Output ONLY the JSON array, nothing else`;
+
+// Helper function to check if an error is an HTTP/2 connection error
+function isHttp2ConnectionError(error) {
+  const message = error?.message || '';
+  return message.includes('NGHTTP2') || 
+         message.includes('Stream closed') ||
+         message.includes('session') ||
+         message.includes('HTTP/2') ||
+         message.includes('ERR_HTTP2');
+}
+
+// Helper function to submit to agent with retry logic for HTTP/2 errors
+async function submitWithRetry(createAgent, prompt, options = {}, maxRetries = 3) {
+  let lastError;
+  let agent = createAgent();
+  
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const { stream } = agent.submit({ message: prompt });
+      let fullResponse = '';
+      
+      for await (const update of stream) {
+        if (update.type === 'text-delta' && update.text) {
+          fullResponse += update.text;
+          if (options.verbose) {
+            process.stdout.write(update.text);
+          }
+        }
+      }
+      
+      return { success: true, response: fullResponse, agent };
+    } catch (error) {
+      // Extract just the message to avoid Bun printing full stack
+      const errorMsg = error?.message || error?.rawMessage || String(error);
+      lastError = new Error(errorMsg.substring(0, 200));
+      
+      if (isHttp2ConnectionError(error)) {
+        if (attempt < maxRetries) {
+          console.log(`\n⚠️ HTTP/2 connection error, retrying (attempt ${attempt + 1}/${maxRetries})...`);
+          // Create a fresh agent to get a new HTTP/2 session
+          agent = createAgent();
+          // Longer delay before retry to let connection settle
+          await new Promise(r => setTimeout(r, 2000));
+          continue;
+        }
+      }
+      
+      // Non-retryable error or max retries reached
+      throw lastError;
+    }
+  }
+  
+  throw lastError;
+}
+
+program
+  .command('agent <prompt>')
+  .description('Use AI to generate and execute a batch job from natural language')
+  .option('--dry-run', 'Only generate the batch job, do not execute')
+  .option('--no-stop', 'Continue on error when executing')
+  .option('-v, --verbose', 'Show agent thinking process')
+  .option('-o, --output <file>', 'Save generated batch job to file')
+  .action(async (prompt, options) => {
+    try {
+      if (!process.env.CURSOR_API_KEY) {
+        console.error('Error: CURSOR_API_KEY environment variable is required');
+        console.error('Set it with: export CURSOR_API_KEY=your_api_key');
+        process.exit(1);
+      }
+
+      // Factory function to create fresh CursorAgent instances
+      const createAgent = () => new CursorAgent({
+        apiKey: process.env.CURSOR_API_KEY,
+        model: 'claude-4.5-sonnet',
+        workingLocation: {
+          type: 'local',
+          localDirectory: process.cwd(),
+        },
+      });
+
+      console.log('🤖 Generating batch job for:', prompt);
+      
+      const fullPrompt = `${AGENT_BATCH_SYSTEM_PROMPT}
+
+User request: ${prompt}
+
+Generate the batch job JSON array now:`;
+
+      // Submit to agent with retry logic for HTTP/2 errors
+      let fullResponse;
+      try {
+        const result = await submitWithRetry(
+          createAgent,
+          fullPrompt,
+          { verbose: options.verbose },
+          3 // max retries
+        );
+        fullResponse = result.response;
+      } catch (error) {
+        console.error('Error: Failed to get response from AI agent after retries:', error.message);
+        process.exit(1);
+      }
+      
+      if (options.verbose) {
+        console.log('\n');
+      }
+
+      // Extract JSON from response (handle potential markdown code blocks)
+      let jsonStr = fullResponse.trim();
+      const jsonMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
+      if (jsonMatch) {
+        jsonStr = jsonMatch[1].trim();
+      }
+      
+      // Also try to find just the array if there's extra text
+      const arrayMatch = jsonStr.match(/\[[\s\S]*\]/);
+      if (arrayMatch) {
+        jsonStr = arrayMatch[0];
+      }
+
+      let instructions;
+      try {
+        instructions = JSON.parse(jsonStr);
+      } catch (parseError) {
+        console.error('Error: Failed to parse generated batch job');
+        console.error('Raw response:', fullResponse);
+        process.exit(1);
+      }
+
+      if (!Array.isArray(instructions)) {
+        console.error('Error: Generated batch job is not an array');
+        process.exit(1);
+      }
+
+      console.log('\n📋 Generated batch job:');
+      console.log(JSON.stringify(instructions, null, 2));
+
+      // Save to file if requested
+      if (options.output) {
+        fs.writeFileSync(options.output, JSON.stringify(instructions, null, 2));
+        console.log(`\n💾 Saved to: ${options.output}`);
+      }
+
+      if (options.dryRun) {
+        console.log('\n✅ Dry run complete - batch job not executed');
+        return;
+      }
+
+      console.log('\n🚀 Executing batch job...');
+      const response = await api.post('/batch', {
+        instructions,
+        stopOnError: options.stop !== false
+      });
+
+      console.log('\n✅ Execution result:');
+      console.log(JSON.stringify(response.data, null, 2));
+    } catch (error) {
+      console.error('Error:', error.message);
+      process.exit(1);
+    }
+  });
+
+// Agent-script command - AI-powered script generation with agentic loop
+// System prompt written to file to avoid HTTP/2 frame size limits
+const AGENT_SCRIPT_SYSTEM_PROMPT = `YOU ARE A CODE GENERATOR. OUTPUT ONLY JAVASCRIPT CODE. NO EXPLANATIONS. NO MARKDOWN. NO TOOL CALLS.
+
+DO NOT use any tools. DO NOT write files. DO NOT explain. JUST OUTPUT THE JAVASCRIPT CODE.
+
+Format:
+const program = defineProgram({
+  name: 'task-name',
+  version: '1.0.0',
+  capabilities: ['move', 'pathfind'],
+  async run(ctx) {
+    const { bot, actions, world, log, control } = ctx;
+    const state = await bot.getState();
+    // your code
+    return control.success({ message: 'Done' });
+  }
+});
+program
+
+AVAILABLE CAPABILITIES: move, dig, place, inventory, craft, pathfind
+
+RULES:
+- bot.getState() is ASYNC: const state = await bot.getState()
+- Vec3 is GLOBAL: new Vec3(x, y, z)
+- sleep is GLOBAL: await sleep(1000)
+- End with just: program
+
+APIs:
+- await bot.getState() → { position: {x,y,z}, health, food, onGround, inWater }
+- await actions.navigate.goto(vec3, { timeoutMs: 30000 }) - pathfind to location
+- await world.scan.blocks({ kinds: ['water', 'stone'], radius: 32, max: 10 }) → [{ position: {x,y,z}, name }] - sorted by distance, nearest first
+- await actions.gather.mineBlock({ position: vec3 }) - mine a block (requires 'dig' capability)
+- await actions.inventory.get() → [{ name, count }] - get inventory items
+- await actions.craft.craft(itemName, count) - craft an item (requires 'craft' capability)
+- log.info(msg)
+- control.success({ message }) / control.fail(message)
+
+EXAMPLE - Find and go to water:
+const program = defineProgram({
+  name: 'find-water',
+  version: '1.0.0',
+  capabilities: ['move', 'pathfind'],
+  async run(ctx) {
+    const { bot, actions, world, log, control } = ctx;
+    const blocks = await world.scan.blocks({ kinds: ['water'], radius: 64, max: 10 });
+    if (blocks.length === 0) return control.fail('No water found');
+    const water = blocks[0];
+    log.info('Found water at ' + water.position.x + ', ' + water.position.z);
+    await actions.navigate.goto(new Vec3(water.position.x + 1, water.position.y, water.position.z), { timeoutMs: 60000 });
+    return control.success({ message: 'Reached water!' });
+  }
+});
+program
+
+EXAMPLE - Collect wood:
+const program = defineProgram({
+  name: 'collect-wood',
+  version: '1.0.0',
+  capabilities: ['move', 'pathfind', 'dig'],
+  async run(ctx) {
+    const { bot, actions, world, log, control } = ctx;
+    const logs = await world.scan.blocks({ kinds: ['oak_log', 'birch_log', 'spruce_log'], radius: 32, max: 5 });
+    if (logs.length === 0) return control.fail('No trees found');
+    let collected = 0;
+    for (const logBlock of logs) {
+      log.info('Mining log at ' + logBlock.position.x + ', ' + logBlock.position.y + ', ' + logBlock.position.z);
+      await actions.navigate.goto(logBlock.position.offset(1, 0, 0), { timeoutMs: 30000 });
+      await actions.gather.mineBlock({ position: logBlock.position });
+      collected++;
+      if (collected >= 4) break;
+    }
+    return control.success({ message: 'Collected ' + collected + ' wood!' });
+  }
+});
+program
+
+NOW OUTPUT ONLY JAVASCRIPT CODE FOR THE TASK:`;
+
+// Path for the context file that the agent will read
+const AGENT_CONTEXT_FILE = '.mineflare-agent-context.md';
+
+program
+  .command('agent-script <prompt>')
+  .description('Use AI agent loop to accomplish tasks via scripts')
+  .option('--max-turns <n>', 'Maximum conversation turns', '10')
+  .option('-v, --verbose', 'Show agent responses')
+  .option('--dry-run', 'Show scripts but do not execute')
+  .action(async (prompt, options) => {
+    try {
+      if (!process.env.CURSOR_API_KEY) {
+        console.error('Error: CURSOR_API_KEY environment variable is required');
+        console.error('Set it with: export CURSOR_API_KEY=your_api_key');
+        process.exit(1);
+      }
+
+      // Check if server is running
+      try {
+        await api.get('/health');
+      } catch (error) {
+        console.error('Error: Bot server is not running. Start it with: mineflare server start');
+        process.exit(1);
+      }
+
+      // Factory function to create fresh CursorAgent instances
+      const createAgent = () => new CursorAgent({
+        apiKey: process.env.CURSOR_API_KEY,
+        model: 'claude-4.5-sonnet',
+        workingLocation: {
+          type: 'local',
+          localDirectory: process.cwd(),
+        },
+      });
+
+      console.log('🤖 Starting agent-script for:', prompt);
+      
+      const maxTurns = parseInt(options.maxTurns) || 10;
+      const contextFilePath = path.join(process.cwd(), AGENT_CONTEXT_FILE);
+      const agentLogPath = path.join(process.cwd(), '.mineflare-agent.log');
+      
+      // Helper to extract essential state (reduces payload size)
+      const getCompactState = (state) => {
+        if (!state || state.error) return state;
+        return {
+          position: state.position,
+          health: state.health,
+          food: state.food,
+          gameMode: state.gameMode
+        };
+      };
+
+      // Helper to get inventory
+      const getInventory = async () => {
+        try {
+          const response = await api.get('/inventory');
+          return response.data.items || [];
+        } catch (e) {
+          return [];
+        }
+      };
+
+      // Helper to format inventory for context
+      const formatInventory = (items) => {
+        if (!items || items.length === 0) return 'Empty';
+        return items.map(item => `- ${item.name} x${item.count}`).join('\n');
+      };
+
+      // Helper to write context to file and return minimal prompt
+      const writeContextFile = (content) => {
+        fs.writeFileSync(contextFilePath, content, 'utf-8');
+      };
+
+      // Helper to append verbose logs to log file
+      const appendToLog = (entry) => {
+        const timestamp = new Date().toISOString();
+        const logLine = `[${timestamp}] ${entry}\n`;
+        fs.appendFileSync(agentLogPath, logLine, 'utf-8');
+      };
+
+      // Initialize log file
+      fs.writeFileSync(agentLogPath, `=== Agent Session Started: ${new Date().toISOString()} ===\nGoal: ${prompt}\n\n`, 'utf-8');
+      console.log(`📝 Verbose logs: ${agentLogPath}`);
+
+      // Get initial bot state and inventory
+      let botState;
+      let inventory;
+      try {
+        const stateResponse = await api.get('/state');
+        botState = getCompactState(stateResponse.data);
+      } catch (e) {
+        botState = { error: 'Could not get initial state' };
+      }
+      inventory = await getInventory();
+
+      // Write full context to file
+      const initialContext = `${AGENT_SCRIPT_SYSTEM_PROMPT}
+
+## Current Bot State
+Position: ${JSON.stringify(botState.position)}
+Health: ${botState.health}
+Food: ${botState.food}
+
+## Current Inventory
+${formatInventory(inventory)}
+
+## User Goal
+${prompt}
+`;
+      writeContextFile(initialContext);
+
+      // Send minimal prompt - agent reads context from file
+      let currentPrompt = `Read the file ${AGENT_CONTEXT_FILE} for instructions and context, then output ONLY the JavaScript code.`;
+
+      for (let turn = 1; turn <= maxTurns; turn++) {
+        console.log(`\n${'─'.repeat(60)}`);
+        console.log(`📍 Turn ${turn}/${maxTurns}`);
+        appendToLog(`--- Turn ${turn}/${maxTurns} ---`);
+        
+        // Submit to agent with retry logic for HTTP/2 errors
+        // Always create fresh agent to avoid HTTP/2 frame size issues from context accumulation
+        let fullResponse;
+        try {
+          const result = await submitWithRetry(
+            createAgent, // Always fresh agent - context is persisted via file
+            currentPrompt,
+            { verbose: options.verbose },
+            3 // max retries
+          );
+          fullResponse = result.response;
+          appendToLog(`Prompt: ${currentPrompt.substring(0, 200)}...`);
+        } catch (error) {
+          console.error('\n❌ Failed to get response from AI agent:', error.message);
+          appendToLog(`ERROR: ${error.message}`);
+          currentPrompt = `Previous request failed due to connection error. Please try again: ${currentPrompt}`;
+          continue;
+        }
+        
+        if (options.verbose) {
+          console.log('\n');
+        }
+
+        // Extract JavaScript from response
+        let scriptSource = fullResponse.trim();
+        
+        // Remove markdown code fences if present
+        const codeMatch = scriptSource.match(/```(?:javascript|js)?\s*([\s\S]*?)```/);
+        if (codeMatch) {
+          scriptSource = codeMatch[1].trim();
+        }
+        
+        // Check if agent says task is complete
+        if (scriptSource.toLowerCase().includes('task complete') || 
+            scriptSource.toLowerCase().includes('goal accomplished') ||
+            scriptSource.toLowerCase().includes('finished successfully')) {
+          console.log('\n✅ Agent indicates task is complete');
+          break;
+        }
+
+        // Validate it looks like a program
+        if (!scriptSource.includes('defineProgram') && !scriptSource.includes('program')) {
+          console.log('\n⚠️ Response does not appear to be a valid program');
+          if (options.verbose) {
+            console.log('Response:', scriptSource.substring(0, 500));
+          }
+          
+          // Ask agent to try again
+          currentPrompt = `That response was not a valid JavaScript program. Please write a program using defineProgram() to accomplish the task. Remember to output ONLY the JavaScript code.`;
+          continue;
+        }
+
+        console.log('\n📜 Generated script:');
+        // Show abbreviated script unless verbose
+        const lines = scriptSource.split('\n');
+        if (lines.length > 20 && !options.verbose) {
+          console.log(lines.slice(0, 10).join('\n'));
+          console.log(`  ... (${lines.length - 20} more lines) ...`);
+          console.log(lines.slice(-10).join('\n'));
+        } else {
+          console.log(scriptSource);
+        }
+
+        if (options.dryRun) {
+          console.log('\n⏭️ Dry run - skipping execution');
+          currentPrompt = `[DRY RUN] The script was not executed. Assume it would have succeeded. What's the next step?`;
+          continue;
+        }
+
+        // Execute the script
+        console.log('\n🚀 Executing script...');
+        let execResult;
+        try {
+          const execResponse = await api.post('/program/exec', {
+            source: scriptSource,
+            capabilities: ['move', 'dig', 'place', 'inventory', 'craft', 'pathfind'],
+            args: {},
+            timeout: 120000,
+            seed: 1
+          }, {
+            timeout: 130000
+          });
+          execResult = execResponse.data;
+        } catch (execError) {
+          execResult = {
+            success: false,
+            error: execError.response?.data?.error || execError.message
+          };
+        }
+
+        // Log verbose execution data to file
+        appendToLog(`Script:\n${scriptSource}`);
+        appendToLog(`Execution result: ${JSON.stringify(execResult, null, 2)}`);
+
+        // Show result (compact summary to console)
+        if (execResult.success) {
+          console.log('\n✅ Script executed successfully');
+          if (execResult.result) {
+            console.log('Result:', JSON.stringify(execResult.result, null, 2));
+          }
+        } else {
+          console.log('\n❌ Script execution failed');
+          console.log('Error:', execResult.error);
+        }
+
+        // Show abbreviated logs to console, full logs go to file
+        if (execResult.logs && execResult.logs.length > 0) {
+          const logsToShow = execResult.logs.slice(-5); // Only show last 5 logs
+          if (execResult.logs.length > 5) {
+            console.log(`\n📋 Logs (last 5 of ${execResult.logs.length}, see ${agentLogPath} for full logs):`);
+          } else {
+            console.log('\n📋 Logs:');
+          }
+          logsToShow.forEach(log => {
+            console.log(`  [${log.level}] ${log.message}`);
+          });
+        }
+
+        // Get updated bot state and inventory (compact)
+        try {
+          const stateResponse = await api.get('/state');
+          botState = getCompactState(stateResponse.data);
+        } catch (e) {
+          botState = { error: 'Could not get state' };
+        }
+        inventory = await getInventory();
+
+        // Write follow-up context to file
+        const resultSummary = execResult.success 
+          ? `SUCCESS: ${execResult.result?.message || 'completed'}`
+          : `FAILED: ${(execResult.error || 'unknown error').substring(0, 300)}`;
+        
+        const followUpContext = `## Previous Execution Result
+${resultSummary}
+
+## Current Bot State
+Position: ${JSON.stringify(botState.position)}
+Health: ${botState.health}
+Food: ${botState.food}
+
+## Current Inventory
+${formatInventory(inventory)}
+
+## Original Goal
+${prompt}
+
+## Instructions
+Based on the result, either:
+1. Write the next JavaScript program (using defineProgram) to continue toward the goal
+2. If done, respond with "TASK COMPLETE"
+
+OUTPUT ONLY CODE OR "TASK COMPLETE":
+`;
+        writeContextFile(followUpContext);
+        
+        currentPrompt = `Read ${AGENT_CONTEXT_FILE} for the execution result and next instructions.`;
+
+        // Check if we should stop
+        if (execResult.success && execResult.result?.message?.toLowerCase().includes('complete')) {
+          console.log('\n✅ Task appears complete based on result');
+          break;
+        }
+      }
+
+      console.log(`\n${'─'.repeat(60)}`);
+      console.log('🏁 Agent session ended');
+      console.log(`📝 Full session log: ${agentLogPath}`);
+      appendToLog(`=== Agent Session Ended: ${new Date().toISOString()} ===`);
+      
+      // Clean up context file (but keep log file for debugging)
+      try {
+        if (fs.existsSync(contextFilePath)) {
+          fs.unlinkSync(contextFilePath);
+        }
+      } catch (e) {
+        // Ignore cleanup errors
+      }
+      
+    } catch (error) {
+      console.error('Error:', error.message);
+      // Clean up context file on error too
+      try {
+        const contextFilePath = path.join(process.cwd(), AGENT_CONTEXT_FILE);
+        if (fs.existsSync(contextFilePath)) {
+          fs.unlinkSync(contextFilePath);
+        }
+      } catch (e) {
+        // Ignore cleanup errors
+      }
       process.exit(1);
     }
   });

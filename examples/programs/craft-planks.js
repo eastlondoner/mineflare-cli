@@ -43,28 +43,27 @@ const program = defineProgram({
     
     log.info(`Crafting ${craftCount * 4} planks from ${craftCount} logs`);
     
-    // Craft the planks
     try {
       await actions.craft.craft(plankType, craftCount);
-      
-      // Check inventory after crafting
-      const newInventory = await actions.inventory.get();
-      const planks = newInventory.filter(item => item.name.includes('planks'));
-      const totalPlanks = planks.reduce((sum, item) => sum + item.count, 0);
-      
-      log.info(`Successfully crafted planks. Total planks in inventory: ${totalPlanks}`);
-      
-      return control.success({
-        message: 'Crafting completed',
-        crafted: plankType,
-        amount: craftCount * 4,
-        totalPlanks: totalPlanks
-      });
     } catch (error) {
       return control.fail('Failed to craft planks', {
         error: error.message
       });
     }
+    
+    // Check inventory after crafting
+    const newInventory = await actions.inventory.get();
+    const planks = newInventory.filter(item => item.name.includes('planks'));
+    const totalPlanks = planks.reduce((sum, item) => sum + item.count, 0);
+    
+    log.info(`Successfully crafted planks. Total planks in inventory: ${totalPlanks}`);
+    
+    return control.success({
+      message: 'Crafting completed',
+      crafted: plankType,
+      amount: craftCount * 4,
+      totalPlanks: totalPlanks
+    });
   }
 });
 
