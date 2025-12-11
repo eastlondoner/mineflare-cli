@@ -29,7 +29,7 @@ process.on('message', (msg) => {
 
     const setupMovements = () => {
       try {
-        const mcData = minecraftData(bot.version || config.version || '1.21.8');
+        const mcData = minecraftData(bot.version || parseVersion(config.version));
         movementProfile = new Movements(bot, mcData);
         bot.pathfinder.setMovements(movementProfile);
       } catch (error) {
