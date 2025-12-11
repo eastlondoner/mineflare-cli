@@ -99,8 +99,75 @@ const VERSION = typeof __VERSION__ !== 'undefined' ? __VERSION__ : require('../p
 
 program
   .name('mineflare')
-  .description('Minecraft bot controller with HTTP API')
-  .version(VERSION);
+  .description('AI-powered Minecraft bot with HTTP API, programs, and agent automation')
+  .version(VERSION)
+  .addHelpText('after', `
+Examples:
+
+  Server Management:
+    $ mineflare server start              # Start server in foreground
+    $ mineflare server start -d           # Start as background daemon
+    $ mineflare server status             # Check if server is running
+    $ mineflare server stop               # Stop the daemon
+
+  Bot Control (requires running server):
+    $ mineflare health                    # Check bot health
+    $ mineflare state                     # Get bot position, health, etc.
+    $ mineflare inventory                 # List bot inventory
+    $ mineflare chat "Hello world"        # Send chat message
+    $ mineflare move --forward 10         # Move forward 10 blocks
+
+  Batch Jobs (JSON instruction sequences):
+    $ mineflare batch -f instructions.json
+
+    Example instructions.json:
+    [
+      { "type": "chat", "params": { "message": "Starting!" } },
+      { "type": "goto", "params": { "x": 100, "y": 64, "z": 200 } },
+      { "type": "dig", "params": { "x": 100, "y": 64, "z": 201 } }
+    ]
+
+  Programs (JavaScript automation scripts):
+    $ mineflare program exec my-script.js              # Run a program file
+    $ mineflare program exec my-script.js --arg count=5
+    $ mineflare program add my-script.js --name gather # Register for reuse
+    $ mineflare program run gather                     # Run registered program
+    $ mineflare program ls                             # List registered programs
+
+    Example program (my-script.js):
+    const program = defineProgram({
+      name: 'example',
+      capabilities: ['move', 'dig'],
+      async run(ctx) {
+        const { bot, actions, log, control } = ctx;
+        log.info('Hello from program!');
+        return control.success({ message: 'Done' });
+      }
+    });
+    program
+
+  AI Agent - Batch (generates JSON from natural language):
+    $ mineflare agent "walk forward 10 blocks then jump"
+    $ mineflare agent "go to coordinates 100, 64, 200" --dry-run
+    $ mineflare agent "dance in a circle" -o dance.json
+
+  AI Agent - Script (generates and executes programs iteratively):
+    $ mineflare agent-script "collect wood from nearby trees"
+    $ mineflare agent-script "build a small house" --max-turns 20
+    $ mineflare agent-script "craft a wooden pickaxe" -v
+
+  Configuration:
+    $ mineflare config get                            # Show all config
+    $ mineflare config set minecraft.host mc.server.com
+    $ mineflare config profile list                   # List profiles
+    $ mineflare config profile switch production      # Switch profile
+
+Environment Variables:
+  CURSOR_API_KEY    Required for agent and agent-script commands
+  MC_HOST           Override Minecraft server host
+  MC_PORT           Override Minecraft server port
+  MC_USERNAME       Override bot username
+`);
 
 // Server commands
 const serverCmd = program
