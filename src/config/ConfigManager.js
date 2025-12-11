@@ -120,10 +120,11 @@ class ConfigManager {
   // Get configuration with environment variable override support
   get(path = null, profile = null) {
     const targetProfile = profile || this.activeProfile;
-    let config = this.configs.get(targetProfile) || this.getDefaults();
+    const defaults = this.getDefaults();
+    const stored = this.configs.get(targetProfile) || {};
     
-    // Deep clone to avoid mutations
-    config = JSON.parse(JSON.stringify(config));
+    // Deep merge stored config with defaults to ensure all sections exist
+    let config = this.deepMerge(defaults, stored);
     
     // Apply environment variable overrides
     config = this.applyEnvironmentOverrides(config);
@@ -141,6 +142,21 @@ class ConfigManager {
     }
     
     return value;
+  }
+  
+  // Deep merge two objects (target values override source)
+  deepMerge(source, target) {
+    const result = JSON.parse(JSON.stringify(source));
+    
+    for (const key of Object.keys(target)) {
+      if (target[key] && typeof target[key] === 'object' && !Array.isArray(target[key])) {
+        result[key] = this.deepMerge(result[key] || {}, target[key]);
+      } else {
+        result[key] = target[key];
+      }
+    }
+    
+    return result;
   }
   
   applyEnvironmentOverrides(config) {
