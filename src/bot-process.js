@@ -10,11 +10,17 @@ process.on('message', (msg) => {
 
     console.log('[BOT-PROCESS] Starting bot in isolated process...');
 
+    // Handle version: string "false" should be converted to boolean false for auto-detect
+    const parseVersion = (v) => {
+      if (v === false || v === 'false' || v === '') return false;
+      return v || false;
+    };
+
     const bot = mineflayer.createBot({
       host: config.host || 'localhost',
       port: config.port || 25565,
       username: config.username || 'Bot',
-      version: config.version || false,
+      version: parseVersion(config.version),
       auth: config.auth || 'offline'
     });
 

@@ -12,13 +12,13 @@ class ConfigManager {
     this.schema = {
       server: {
         port: { type: 'number', default: 3000, min: 1, max: 65535, description: 'HTTP API server port' },
-        timeout: { type: 'number', default: 30000, min: 1000, description: 'API request timeout in ms' }
+        timeout: { type: 'number', default: 180000, min: 1000, description: 'API request timeout in ms' }
       },
       minecraft: {
         host: { type: 'string', default: 'localhost', description: 'Minecraft server hostname' },
         port: { type: 'number', default: 25565, min: 1, max: 65535, description: 'Minecraft server port' },
         username: { type: 'string', default: 'AIBot', description: 'Bot username' },
-        version: { type: 'string', default: '1.21.8', description: 'Minecraft version' },
+        version: { type: 'string', default: 'false', description: 'Minecraft version. False means auto-detect.' },
         auth: { type: 'string', default: 'offline', enum: ['offline', 'microsoft', 'mojang'], description: 'Authentication type' },
         viewDistance: { type: 'string', default: 'normal', enum: ['tiny', 'short', 'normal', 'far'], description: 'View distance' }
       },
@@ -36,7 +36,7 @@ class ConfigManager {
         filePath: { type: 'string', default: './logs/bot.log', description: 'Log file path' }
       },
       performance: {
-        maxEventsHistory: { type: 'number', default: 10000, min: 100, description: 'Maximum events to keep in history' },
+        maxEventsHistory: { type: 'number', default: 100, min: 10, description: 'Maximum events to keep in history' },
         screenshotQuality: { type: 'number', default: 85, min: 1, max: 100, description: 'Screenshot JPEG quality' }
       }
     };
@@ -411,6 +411,37 @@ class ConfigManager {
     
     this.configs.set(targetProfile, configData);
     this.saveConfigurations();
+  }
+
+  // Get information about config sources being used
+  getConfigSources() {
+    const sources = {
+      configFile: this.configFile,
+      configFileExists: fs.existsSync(this.configFile),
+      envOverrides: []
+    };
+
+    // Map of environment variables to config paths
+    const envMappings = {
+      'MC_HOST': 'minecraft.host',
+      'MC_PORT': 'minecraft.port',
+      'MC_USERNAME': 'minecraft.username',
+      'MC_VERSION': 'minecraft.version',
+      'MC_AUTH': 'minecraft.auth',
+      'MINEFLARE_SERVER_PORT': 'server.port',
+      'API_BASE': 'api.baseUrl',
+      'ENABLE_VIEWER': 'viewer.enabled',
+      'VIEWER_PORT': 'viewer.port',
+      'LOG_LEVEL': 'logging.level'
+    };
+
+    for (const [envVar, configPath] of Object.entries(envMappings)) {
+      if (process.env[envVar] !== undefined) {
+        sources.envOverrides.push({ envVar, configPath, value: process.env[envVar] });
+      }
+    }
+
+    return sources;
   }
 }
 

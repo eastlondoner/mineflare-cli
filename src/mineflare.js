@@ -105,20 +105,20 @@ program
 Examples:
 
   Server Management:
-    $ mineflare server start              # Start server in foreground
-    $ mineflare server start -d           # Start as background daemon
-    $ mineflare server status             # Check if server is running
-    $ mineflare server stop               # Stop the daemon
+    $ bun mineflare server start              # Start server in foreground
+    $ bun mineflare server start -d           # Start as background daemon
+    $ bun mineflare server status             # Check if server is running
+    $ bun mineflare server stop               # Stop the daemon
 
   Bot Control (requires running server):
-    $ mineflare health                    # Check bot health
-    $ mineflare state                     # Get bot position, health, etc.
-    $ mineflare inventory                 # List bot inventory
-    $ mineflare chat "Hello world"        # Send chat message
-    $ mineflare move --forward 10         # Move forward 10 blocks
+    $ bun mineflare health                    # Check bot health
+    $ bun mineflare state                     # Get bot position, health, etc.
+    $ bun mineflare inventory                 # List bot inventory
+    $ bun mineflare chat "Hello world"        # Send chat message
+    $ bun mineflare move --forward 10         # Move forward 10 blocks
 
   Batch Jobs (JSON instruction sequences):
-    $ mineflare batch -f instructions.json
+    $ bun mineflare batch -f instructions.json
 
     Example instructions.json:
     [
@@ -128,11 +128,11 @@ Examples:
     ]
 
   Programs (JavaScript automation scripts):
-    $ mineflare program exec my-script.js              # Run a program file
-    $ mineflare program exec my-script.js --arg count=5
-    $ mineflare program add my-script.js --name gather # Register for reuse
-    $ mineflare program run gather                     # Run registered program
-    $ mineflare program ls                             # List registered programs
+    $ bun mineflare program exec my-script.js              # Run a program file
+    $ bun mineflare program exec my-script.js --arg count=5
+    $ bun mineflare program add my-script.js --name gather # Register for reuse
+    $ bun mineflare program run gather                     # Run registered program
+    $ bun mineflare program ls                             # List registered programs
 
     Example program (my-script.js):
     const program = defineProgram({
@@ -147,20 +147,20 @@ Examples:
     program
 
   AI Agent - Batch (generates JSON from natural language):
-    $ mineflare agent "walk forward 10 blocks then jump"
-    $ mineflare agent "go to coordinates 100, 64, 200" --dry-run
-    $ mineflare agent "dance in a circle" -o dance.json
+    $ bun mineflare agent "walk forward 10 blocks then jump"
+    $ bun mineflare agent "go to coordinates 100, 64, 200" --dry-run
+    $ bun mineflare agent "dance in a circle" -o dance.json
 
   AI Agent - Script (generates and executes programs iteratively):
-    $ mineflare agent-script "collect wood from nearby trees"
-    $ mineflare agent-script "build a small house" --max-turns 20
-    $ mineflare agent-script "craft a wooden pickaxe" -v
+    $ bun mineflare agent-script "collect wood from nearby trees"
+    $ bun mineflare agent-script "build a small house" --max-turns 20
+    $ bun mineflare agent-script "craft a wooden pickaxe" -v
 
   Configuration:
-    $ mineflare config get                            # Show all config
-    $ mineflare config set minecraft.host mc.server.com
-    $ mineflare config profile list                   # List profiles
-    $ mineflare config profile switch production      # Switch profile
+    $ bun mineflare config get                            # Show all config
+    $ bun mineflare config set minecraft.host mc.server.com
+    $ bun mineflare config profile list                   # List profiles
+    $ bun mineflare config profile switch production      # Switch profile
 
 Environment Variables:
   CURSOR_API_KEY    Required for agent and agent-script commands
@@ -403,6 +403,13 @@ configCmd
   .option('--json', 'Output as JSON')
   .action((path, options) => {
     try {
+      // Print config sources to stderr
+      const sources = configManager.getConfigSources();
+      console.error(`Config file: ${sources.configFile}${sources.configFileExists ? '' : ' (not found, using defaults)'}`);
+      if (sources.envOverrides.length > 0) {
+        console.error(`Environment overrides: ${sources.envOverrides.map(o => o.envVar).join(', ')}`);
+      }
+
       const value = configManager.get(path, options.profile);
       
       if (options.json) {
