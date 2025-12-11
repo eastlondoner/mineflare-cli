@@ -104,6 +104,45 @@ src/
 - Block scanning and detection
 - Entity queries
 - World state information
+- Path analysis and reachability
+
+##### Path Analysis API
+
+The `world.analyze.pathTo(target)` function analyzes whether a target position is reachable and what modifications would be needed:
+
+```javascript
+const analysis = await world.analyze.pathTo(targetBlock.position);
+// Returns:
+{
+  reachable: boolean,           // Can reach with any method
+  triviallyReachable: boolean,  // Can walk there without modifications
+  distance: number,             // Euclidean distance
+  pathLength: number | null,    // Steps if reachable
+  requirements: {
+    digging: {
+      needed: boolean,
+      blocks: Array<{ position: Vec3, type: string, hardness: number }>,
+      estimatedTime: number,    // ms with bare hands
+      recommendedTool: string   // 'pickaxe', 'shovel', 'axe', or null
+    },
+    building: {
+      needed: boolean,
+      blocksRequired: number,
+      gaps: Array<{ position: Vec3, width: number }>
+    },
+    swimming: boolean,
+    parkour: boolean,
+    verticalChange: number
+  },
+  difficulty: 'trivial' | 'easy' | 'medium' | 'hard' | 'unreachable',
+  suggestedApproach: 'walk' | 'dig' | 'build' | 'dig_and_build' | null
+}
+```
+
+Use cases:
+- Find the easiest-to-reach block among multiple options
+- Determine if digging/building tools are needed before attempting navigation
+- Skip unreachable blocks without wasting time on failed pathfinding attempts
 
 ### Phase 3: Program Management
 

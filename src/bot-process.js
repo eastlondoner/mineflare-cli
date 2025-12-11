@@ -347,56 +347,64 @@ process.on('message', (msg) => {
 
           const target = new Vec3(params.x, params.y, params.z);
           const tolerance = params.tolerance ?? 1;
-          const timeout = params.timeout || 30000;
+          const maxSteps = params.maxSteps || 500;
           const goal = params.precise
             ? new goals.GoalBlock(target.x, target.y, target.z)
             : new goals.GoalNear(target.x, target.y, target.z, tolerance);
 
           const start = Date.now();
-          let timeoutHandle;
           let pathFound = false;
+          let nodesTraversed = 0;
+          let lastPathLength = 0;
+          let stepLimitError = null;
 
-          console.log(`[BOT-PATHFIND] Starting goto (${target.x.toFixed(1)}, ${target.y.toFixed(1)}, ${target.z.toFixed(1)}), timeout=${timeout}ms`);
+          // Ensure pathfinder has adequate think timeout for complex terrain
+          bot.pathfinder.thinkTimeout = 30000; // 30 seconds
 
-          // Track path updates
-          let emptyPathCount = 0;
-          
-          // Add pathfinding event listeners for debugging
+          console.log(`[BOT-PATHFIND] Starting goto (${target.x.toFixed(1)}, ${target.y.toFixed(1)}, ${target.z.toFixed(1)}), maxSteps=${maxSteps}`);
+
+          // Track path updates and count nodes traversed
           const onPathUpdate = (path) => {
-            const nodeCount = path?.length || 0;
-            if (!pathFound) {
+            const currentLength = path?.length || 0;
+            
+            if (!pathFound && currentLength > 0) {
               pathFound = true;
-              console.log(`[BOT-PATHFIND] Path calculated in ${Date.now() - start}ms, ${nodeCount} nodes`);
+              console.log(`[BOT-PATHFIND] Path found in ${Date.now() - start}ms, ${currentLength} nodes`);
             }
             
-            // Track consecutive empty paths
-            if (nodeCount === 0) {
-              emptyPathCount++;
-              console.log(`[BOT-PATHFIND] Empty path #${emptyPathCount}`);
-            } else {
-              emptyPathCount = 0;
+            // When path shrinks, nodes were traversed
+            if (lastPathLength > 0 && currentLength < lastPathLength) {
+              nodesTraversed += (lastPathLength - currentLength);
+              console.log(`[BOT-PATHFIND] Nodes traversed: ${nodesTraversed}/${maxSteps}`);
+            }
+            lastPathLength = currentLength;
+            
+            // Check step limit
+            if (nodesTraversed >= maxSteps) {
+              stepLimitError = new Error(`Pathfinding exceeded max steps (${maxSteps})`);
+              bot.pathfinder.stop();
             }
           };
           bot.on('path_update', onPathUpdate);
 
           try {
-            await Promise.race([
-              bot.pathfinder.goto(goal),
-              new Promise((_, reject) => {
-                timeoutHandle = setTimeout(() => {
-                  console.log(`[BOT-PATHFIND] TIMEOUT! elapsed=${Date.now() - start}ms, pathFound=${pathFound}, emptyPaths=${emptyPathCount}`);
-                  reject(new Error('Pathfinding timeout'));
-                }, timeout);
-              })
-            ]);
-            console.log(`[BOT-PATHFIND] Completed in ${Date.now() - start}ms`);
+            await bot.pathfinder.goto(goal);
+            
+            // Check if we stopped due to step limit
+            if (stepLimitError) {
+              throw stepLimitError;
+            }
+            
+            console.log(`[BOT-PATHFIND] Completed in ${Date.now() - start}ms, ${nodesTraversed} nodes traversed`);
           } catch (err) {
+            // If stopped due to step limit, throw that error
+            if (stepLimitError) {
+              console.log(`[BOT-PATHFIND] Step limit reached after ${Date.now() - start}ms: ${stepLimitError.message}`);
+              throw stepLimitError;
+            }
             console.log(`[BOT-PATHFIND] Error after ${Date.now() - start}ms: ${err.message}`);
             throw err;
           } finally {
-            if (timeoutHandle) {
-              clearTimeout(timeoutHandle);
-            }
             bot.removeListener('path_update', onPathUpdate);
             bot.pathfinder.setGoal(null);
           }
@@ -411,7 +419,8 @@ process.on('message', (msg) => {
               y: finalPos.y,
               z: finalPos.z
             },
-            duration_ms: Date.now() - start
+            duration_ms: Date.now() - start,
+            nodesTraversed
           };
         }
 
@@ -970,6 +979,237 @@ process.on('message', (msg) => {
                   type: 'batch_response',
                   results: { error: error.message }
                 });
+              }
+              break;
+
+            case 'analyze_path':
+              try {
+                const { x, y, z, timeout = 5000 } = msg;
+                if (x === undefined || y === undefined || z === undefined) {
+                  process.send({ type: 'analyze_path_response', error: 'x, y, z coordinates required' });
+                  break;
+                }
+
+                const targetPos = new Vec3(x, y, z);
+                const botPos = bot.entity.position;
+                const distance = botPos.distanceTo(targetPos);
+
+                console.log(`[BOT-ANALYZE] Analyzing path to (${x.toFixed(1)}, ${y.toFixed(1)}, ${z.toFixed(1)})`);
+
+                const mcData = minecraftData(bot.version);
+                const analysis = {
+                  reachable: false,
+                  triviallyReachable: false,
+                  distance: distance,
+                  pathLength: null,
+                  requirements: {
+                    digging: {
+                      needed: false,
+                      blocks: [],
+                      estimatedTime: 0,
+                      recommendedTool: null
+                    },
+                    building: {
+                      needed: false,
+                      blocksRequired: 0,
+                      gaps: []
+                    },
+                    swimming: false,
+                    parkour: false,
+                    verticalChange: Math.abs(targetPos.y - botPos.y)
+                  },
+                  difficulty: 'unreachable',
+                  suggestedApproach: null
+                };
+
+                // Helper to try pathfinding with specific settings
+                const tryPath = async (canDig, canPlace, passName) => {
+                  return new Promise((resolve) => {
+                    const movements = new Movements(bot, mcData);
+                    movements.canDig = canDig;
+                    movements.canPlace = canPlace;
+                    movements.allowParkour = true;
+                    movements.allowSprinting = true;
+                    
+                    bot.pathfinder.setMovements(movements);
+                    
+                    const goal = new goals.GoalNear(targetPos.x, targetPos.y, targetPos.z, 1);
+                    
+                    let pathResult = null;
+                    let pathLength = 0;
+                    let blocksToBreak = [];
+                    let emptyPathCount = 0;
+                    let resolved = false;
+                    
+                    const cleanup = () => {
+                      if (!resolved) {
+                        resolved = true;
+                        bot.pathfinder.stop();
+                        bot.removeListener('path_update', onPathUpdate);
+                        bot.removeListener('goal_reached', onGoalReached);
+                        bot.pathfinder.setGoal(null);
+                      }
+                    };
+                    
+                    const onGoalReached = () => {
+                      if (resolved) return;
+                      cleanup();
+                      console.log(`[BOT-ANALYZE] ${passName}: goal already reached`);
+                      resolve({ success: true, pathLength: 0, blocksToBreak: [] });
+                    };
+                    
+                    const onPathUpdate = (path) => {
+                      if (resolved) return;
+                      
+                      const currentLength = path?.length || 0;
+                      
+                      if (currentLength > 0) {
+                        // Found a valid path!
+                        pathLength = currentLength;
+                        pathResult = path;
+                        
+                        // If digging is enabled, check for blocks that would be broken
+                        if (canDig) {
+                          for (const node of path) {
+                            // Check blocks at head and feet height along path
+                            const positions = [
+                              new Vec3(Math.floor(node.x), Math.floor(node.y), Math.floor(node.z)),
+                              new Vec3(Math.floor(node.x), Math.floor(node.y) + 1, Math.floor(node.z))
+                            ];
+                            for (const pos of positions) {
+                              const block = bot.blockAt(pos);
+                              if (block && block.name !== 'air' && block.name !== 'water' && block.name !== 'lava') {
+                                const alreadyAdded = blocksToBreak.some(b => 
+                                  b.position.x === pos.x && b.position.y === pos.y && b.position.z === pos.z
+                                );
+                                if (!alreadyAdded) {
+                                  blocksToBreak.push({
+                                    position: { x: pos.x, y: pos.y, z: pos.z },
+                                    type: block.name,
+                                    hardness: block.hardness || 0
+                                  });
+                                }
+                              }
+                            }
+                          }
+                        }
+                        
+                        cleanup();
+                        console.log(`[BOT-ANALYZE] ${passName}: found path, length=${pathLength}, blocksToBreak=${blocksToBreak.length}`);
+                        resolve({ success: true, pathLength, blocksToBreak });
+                      } else {
+                        // Empty path
+                        emptyPathCount++;
+                        if (emptyPathCount >= 5) {
+                          // After 5 empty paths, assume unreachable
+                          cleanup();
+                          console.log(`[BOT-ANALYZE] ${passName}: unreachable (${emptyPathCount} empty paths)`);
+                          resolve({ success: false, pathLength: 0, blocksToBreak: [] });
+                        }
+                      }
+                    };
+                    
+                    bot.on('path_update', onPathUpdate);
+                    bot.on('goal_reached', onGoalReached);
+                    
+                    // Set a timeout for this attempt
+                    const attemptTimeout = setTimeout(() => {
+                      if (resolved) return;
+                      cleanup();
+                      console.log(`[BOT-ANALYZE] ${passName}: timeout after ${timeout}ms`);
+                      resolve({ success: false, pathLength: 0, blocksToBreak: [] });
+                    }, timeout);
+                    
+                    // Start pathfinding
+                    bot.pathfinder.setGoal(goal);
+                  });
+                };
+
+                // PASS 1: Trivial path (no modifications)
+                console.log('[BOT-ANALYZE] Pass 1: Checking trivial path...');
+                const trivialResult = await tryPath(false, false, 'Pass 1 (trivial)');
+                
+                if (trivialResult.success) {
+                  analysis.triviallyReachable = true;
+                  analysis.reachable = true;
+                  analysis.pathLength = trivialResult.pathLength;
+                  analysis.difficulty = 'trivial';
+                  analysis.suggestedApproach = 'walk';
+                } else {
+                  // PASS 2: Path with digging
+                  console.log('[BOT-ANALYZE] Pass 2: Checking path with digging...');
+                  const digResult = await tryPath(true, false, 'Pass 2 (dig)');
+                  
+                  if (digResult.success) {
+                    analysis.reachable = true;
+                    analysis.pathLength = digResult.pathLength;
+                    analysis.requirements.digging.needed = digResult.blocksToBreak.length > 0;
+                    analysis.requirements.digging.blocks = digResult.blocksToBreak;
+                    
+                    // Calculate estimated time and recommended tool
+                    let totalTime = 0;
+                    let hardestBlock = null;
+                    for (const block of digResult.blocksToBreak) {
+                      // Bare hands time = hardness * 5 seconds (rough estimate)
+                      totalTime += (block.hardness || 0.5) * 5000;
+                      if (!hardestBlock || block.hardness > hardestBlock.hardness) {
+                        hardestBlock = block;
+                      }
+                    }
+                    analysis.requirements.digging.estimatedTime = totalTime;
+                    
+                    // Recommend tool based on hardest block
+                    if (hardestBlock) {
+                      if (hardestBlock.type.includes('stone') || hardestBlock.type.includes('ore')) {
+                        analysis.requirements.digging.recommendedTool = 'pickaxe';
+                      } else if (hardestBlock.type.includes('dirt') || hardestBlock.type.includes('sand') || hardestBlock.type.includes('gravel')) {
+                        analysis.requirements.digging.recommendedTool = 'shovel';
+                      } else if (hardestBlock.type.includes('log') || hardestBlock.type.includes('plank') || hardestBlock.type.includes('wood')) {
+                        analysis.requirements.digging.recommendedTool = 'axe';
+                      }
+                    }
+                    
+                    // Determine difficulty
+                    if (digResult.blocksToBreak.length === 0) {
+                      analysis.difficulty = 'easy';
+                    } else if (digResult.blocksToBreak.every(b => b.hardness < 1)) {
+                      analysis.difficulty = 'easy';
+                    } else if (digResult.blocksToBreak.every(b => b.hardness < 3)) {
+                      analysis.difficulty = 'medium';
+                    } else {
+                      analysis.difficulty = 'hard';
+                    }
+                    analysis.suggestedApproach = 'dig';
+                  } else {
+                    // PASS 3: Path with building
+                    console.log('[BOT-ANALYZE] Pass 3: Checking path with building...');
+                    const buildResult = await tryPath(true, true, 'Pass 3 (build)');
+                    
+                    if (buildResult.success) {
+                      analysis.reachable = true;
+                      analysis.pathLength = buildResult.pathLength;
+                      analysis.requirements.digging.needed = buildResult.blocksToBreak.length > 0;
+                      analysis.requirements.digging.blocks = buildResult.blocksToBreak;
+                      analysis.requirements.building.needed = true;
+                      // Estimate blocks needed (rough heuristic based on path length and height change)
+                      analysis.requirements.building.blocksRequired = Math.max(1, Math.ceil(analysis.requirements.verticalChange / 2));
+                      analysis.difficulty = 'hard';
+                      analysis.suggestedApproach = analysis.requirements.digging.needed ? 'dig_and_build' : 'build';
+                    }
+                  }
+                }
+
+                // Check for water/swimming
+                const waterNearTarget = bot.blockAt(targetPos);
+                if (waterNearTarget && (waterNearTarget.name === 'water' || waterNearTarget.name === 'flowing_water')) {
+                  analysis.requirements.swimming = true;
+                }
+
+                console.log(`[BOT-ANALYZE] Analysis complete: ${analysis.difficulty}, approach=${analysis.suggestedApproach}`);
+                process.send({ type: 'analyze_path_response', analysis });
+              } catch (error) {
+                console.error('[BOT-ANALYZE] Error:', error);
+                process.send({ type: 'analyze_path_response', error: error.message });
               }
               break;
           }

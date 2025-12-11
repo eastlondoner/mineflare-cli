@@ -1,10 +1,54 @@
 #!/usr/bin/env bun
 
+const path = require('path');
+const fs = require('fs');
+
+// Load .env file automatically (works with both Node.js and Bun)
+function loadEnvFile() {
+  const envPaths = [
+    path.join(process.cwd(), '.env'),
+    path.join(__dirname, '..', '.env')
+  ];
+  
+  for (const envPath of envPaths) {
+    if (fs.existsSync(envPath)) {
+      try {
+        const content = fs.readFileSync(envPath, 'utf8');
+        for (const line of content.split('\n')) {
+          const trimmed = line.trim();
+          // Skip comments and empty lines
+          if (!trimmed || trimmed.startsWith('#')) continue;
+          
+          const eqIndex = trimmed.indexOf('=');
+          if (eqIndex > 0) {
+            const key = trimmed.slice(0, eqIndex).trim();
+            let value = trimmed.slice(eqIndex + 1).trim();
+            // Remove surrounding quotes if present
+            if ((value.startsWith('"') && value.endsWith('"')) ||
+                (value.startsWith("'") && value.endsWith("'"))) {
+              value = value.slice(1, -1);
+            }
+            // Only set if not already defined (don't override existing env vars)
+            if (process.env[key] === undefined) {
+              process.env[key] = value;
+            }
+          }
+        }
+        return true;
+      } catch (err) {
+        // Silently ignore read errors
+      }
+    }
+  }
+  return false;
+}
+
+// Load env vars before anything else
+loadEnvFile();
+
 const { Command } = require('commander');
 const axios = require('axios');
 const { CursorAgent } = require('@cursor-ai/january');
-const path = require('path');
-const fs = require('fs');
 const configManager = require('./config/ConfigManager');
 const Table = require('cli-table3');
 const ProgramSandbox = require('./program-system/runtime/sandbox');
@@ -1160,12 +1204,14 @@ You must output ONLY a valid JSON array of instructions. No markdown, no explana
 
 // Helper function to check if an error is an HTTP/2 connection error
 function isHttp2ConnectionError(error) {
-  const message = error?.message || '';
+  const message = error?.message || error?.rawMessage || '';
   return message.includes('NGHTTP2') || 
          message.includes('Stream closed') ||
          message.includes('session') ||
          message.includes('HTTP/2') ||
-         message.includes('ERR_HTTP2');
+         message.includes('ERR_HTTP2') ||
+         message.includes('h2 is not supported') ||
+         message.includes('alpnProtocol');
 }
 
 // Helper function to submit to agent with retry logic for HTTP/2 errors
@@ -1349,13 +1395,15 @@ RULES:
 
 APIs:
 - await bot.getState() → { position: {x,y,z}, health, food, onGround, inWater }
-- await actions.navigate.goto(vec3, { timeoutMs: 30000 }) - pathfind to location
+- await actions.navigate.goto(vec3, { maxSteps: 500 }) - pathfind to location
 - await world.scan.blocks({ kinds: ['water', 'stone'], radius: 32, max: 10 }) → [{ position: {x,y,z}, name }] - sorted by distance, nearest first
-- await actions.gather.mineBlock({ position: vec3 }) - mine a block (requires 'dig' capability)
+- await actions.gather.mineBlock({ position: vec3 }) - navigate to and mine a block (handles pathfinding automatically)
 - await actions.inventory.get() → [{ name, count }] - get inventory items
 - await actions.craft.craft(itemName, count) - craft an item (requires 'craft' capability)
 - log.info(msg)
 - control.success({ message }) / control.fail(message)
+
+IMPORTANT: Use try/catch when iterating through blocks - if one fails, try the next one.
 
 EXAMPLE - Find and go to water:
 const program = defineProgram({
@@ -1368,30 +1416,53 @@ const program = defineProgram({
     if (blocks.length === 0) return control.fail('No water found');
     const water = blocks[0];
     log.info('Found water at ' + water.position.x + ', ' + water.position.z);
-    await actions.navigate.goto(new Vec3(water.position.x + 1, water.position.y, water.position.z), { timeoutMs: 60000 });
+    await actions.navigate.goto(new Vec3(water.position.x + 1, water.position.y, water.position.z), { maxSteps: 500 });
     return control.success({ message: 'Reached water!' });
   }
 });
 program
 
-EXAMPLE - Collect wood:
+EXAMPLE - Wood collection (search wide, filter by reachable height):
 const program = defineProgram({
   name: 'collect-wood',
   version: '1.0.0',
   capabilities: ['move', 'pathfind', 'dig'],
   async run(ctx) {
     const { bot, actions, world, log, control } = ctx;
-    const logs = await world.scan.blocks({ kinds: ['oak_log', 'birch_log', 'spruce_log'], radius: 32, max: 5 });
+    const state = await bot.getState();
+    const botY = Math.floor(state.position.y);
+    
+    // Search wide area (64 blocks) for ALL log types
+    const logs = await world.scan.blocks({ kinds: ['oak_log', 'birch_log', 'spruce_log', 'cherry_log', 'acacia_log', 'dark_oak_log', 'jungle_log', 'mangrove_log'], radius: 64, max: 50 });
     if (logs.length === 0) return control.fail('No trees found');
-    let collected = 0;
-    for (const logBlock of logs) {
-      log.info('Mining log at ' + logBlock.position.x + ', ' + logBlock.position.y + ', ' + logBlock.position.z);
-      await actions.navigate.goto(logBlock.position.offset(1, 0, 0), { timeoutMs: 30000 });
-      await actions.gather.mineBlock({ position: logBlock.position });
-      collected++;
-      if (collected >= 4) break;
+    
+    // Filter to logs within ±2 Y of bot (reachable with simple jump/drop)
+    const reachableLogs = logs.filter(l => l.position.y >= botY - 2 && l.position.y <= botY + 2);
+    reachableLogs.sort((a, b) => a.position.y - b.position.y);
+    log.info('Found ' + logs.length + ' total logs, ' + reachableLogs.length + ' at reachable height');
+    
+    if (reachableLogs.length === 0) {
+      log.info('No logs at current height, walking toward nearest tree...');
+      // Walk toward the nearest log to get to same terrain level
+      const nearest = logs[0];
+      try {
+        await actions.navigate.goto(new Vec3(nearest.position.x, botY, nearest.position.z), { maxSteps: 200 });
+      } catch (e) { /* ignore nav errors */ }
+      return control.fail('No logs at reachable height - try moving closer to trees');
     }
-    return control.success({ message: 'Collected ' + collected + ' wood!' });
+    
+    // Try each reachable log
+    for (const logBlock of reachableLogs) {
+      try {
+        log.info('Mining at Y=' + Math.floor(logBlock.position.y));
+        await actions.gather.mineBlock({ position: logBlock.position });
+        log.info('Successfully mined!');
+        return control.success({ message: 'Collected wood!' });
+      } catch (err) {
+        log.info('Could not reach, trying next...');
+      }
+    }
+    return control.fail('Could not reach any logs');
   }
 });
 program

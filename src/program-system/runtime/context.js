@@ -202,6 +202,53 @@ class ContextBuilder {
       return this.botServer.getTime();
     };
 
+    // Path analysis
+    world.analyze = {
+      /**
+       * Analyze the path to a target position
+       * @param {Vec3|{x,y,z}} target - Target position to analyze path to
+       * @param {Object} options - Analysis options
+       * @param {number} [options.timeoutMs=10000] - Timeout for analysis
+       * @returns {Promise<Object>} Path analysis result
+       */
+      pathTo: async (target, options = {}) => {
+        if (!this.botServer || !this.botServer.isConnected()) {
+          throw new ProgramError(ErrorCode.BOT_DISCONNECTED, 'Bot is not connected');
+        }
+
+        const targetPos = target instanceof Vec3 
+          ? target 
+          : new Vec3(target.x, target.y, target.z);
+
+        const timeoutMs = options.timeoutMs || 10000;
+
+        try {
+          const analysis = await this.botServer.analyzePath(targetPos, timeoutMs);
+          
+          // Convert block positions to Vec3
+          if (analysis.requirements?.digging?.blocks) {
+            analysis.requirements.digging.blocks = analysis.requirements.digging.blocks.map(b => ({
+              ...b,
+              position: new Vec3(b.position.x, b.position.y, b.position.z)
+            }));
+          }
+          if (analysis.requirements?.building?.gaps) {
+            analysis.requirements.building.gaps = analysis.requirements.building.gaps.map(g => ({
+              ...g,
+              position: new Vec3(g.position.x, g.position.y, g.position.z)
+            }));
+          }
+
+          return analysis;
+        } catch (error) {
+          throw new ProgramError(
+            ErrorCode.OPERATION_FAILED,
+            `Path analysis failed: ${error.message}`
+          );
+        }
+      }
+    };
+
     return world;
   }
 
@@ -212,7 +259,7 @@ class ContextBuilder {
     if (this.capabilities.has('move') || this.capabilities.has('pathfind')) {
       actions.navigate = {
         goto: async (target, opts = {}) => {
-          console.log(`[CTX-NAVIGATE] goto called: target=(${target?.x?.toFixed(1)}, ${target?.y?.toFixed(1)}, ${target?.z?.toFixed(1)}), timeout=${opts.timeoutMs}`);
+          console.log(`[CTX-NAVIGATE] goto called: target=(${target?.x?.toFixed(1)}, ${target?.y?.toFixed(1)}, ${target?.z?.toFixed(1)}), maxSteps=${opts.maxSteps}`);
           this.budget.check('move');
 
           if (!this.botServer || !this.botServer.isConnected()) {
@@ -226,7 +273,7 @@ class ContextBuilder {
               x: target.x,
               y: target.y,
               z: target.z,
-              timeout: typeof opts.timeoutMs === 'number' ? opts.timeoutMs : 30000
+              maxSteps: typeof opts.maxSteps === 'number' ? opts.maxSteps : 500
             };
 
             const optionMap = {
@@ -322,57 +369,68 @@ class ContextBuilder {
               return;
             }
 
-            const state = await this.botServer.getState();
-            const botPosition = state?.position
-              ? new Vec3(state.position.x, state.position.y, state.position.z)
-              : null;
+            // Helper to get current position
+            const getPos = async () => {
+              const s = await this.botServer.getState();
+              return s?.position ? new Vec3(s.position.x, s.position.y, s.position.z) : null;
+            };
 
-            if (botPosition && botPosition.distanceTo(blockPos) <= reachDistance) {
-              return;
-            }
+            // Helper to check if in reach
+            const inReach = async () => {
+              const pos = await getPos();
+              return pos && pos.distanceTo(blockPos) <= reachDistance;
+            };
 
-            const candidateOffsets = [
-              new Vec3(1, 0, 0),
-              new Vec3(-1, 0, 0),
-              new Vec3(0, 0, 1),
-              new Vec3(0, 0, -1),
-              new Vec3(1, 1, 0),
-              new Vec3(-1, 1, 0),
-              new Vec3(0, 1, 1),
-              new Vec3(0, 1, -1)
-            ];
+            // Already in reach?
+            if (await inReach()) return;
+
+            const botPosition = await getPos();
+            const botY = botPosition ? Math.floor(botPosition.y) : Math.floor(blockPos.y);
+            const blockY = Math.floor(blockPos.y);
+            const yDiff = blockY - botY;
 
             let lastError = null;
 
-            for (const offset of candidateOffsets) {
-              const target = new Vec3(
-                blockPos.x + offset.x,
-                blockPos.y + offset.y,
-                blockPos.z + offset.z
-              );
+            // PHASE 1: Horizontal navigation to block's X,Z at bot's Y level
+            // This is fast because it avoids climbing
+            const horizontalTarget = new Vec3(blockPos.x, botY, blockPos.z);
+            try {
+              await actions.navigate.goto(horizontalTarget, {
+                tolerance: 2,
+                avoidHoles,
+                maxDrop: 2,
+                timeoutMs: 8000  // Short timeout for horizontal movement
+              });
+            } catch (e) {
+              lastError = e;
+              // Continue even if horizontal nav fails - try offsets
+            }
 
-              try {
-                await actions.navigate.goto(target, {
-                  tolerance: 1,
-                  avoidHoles,
-                  maxDrop,
-                  timeoutMs: Math.max(5000, Math.min(timeoutMs, 20000))
-                });
+            if (await inReach()) return;
 
-                const refreshedState = await this.botServer.getState();
-                const refreshedPos = refreshedState?.position
-                  ? new Vec3(
-                      refreshedState.position.x,
-                      refreshedState.position.y,
-                      refreshedState.position.z
-                    )
-                  : null;
-
-                if (refreshedPos && refreshedPos.distanceTo(blockPos) <= reachDistance) {
-                  return;
+            // PHASE 2: Simple ±1 Y adjustments only (jump up or drop down one block)
+            const simpleYLevels = [botY + 1, botY - 1];
+            for (const targetY of simpleYLevels) {
+              // Try position directly under/over block and one offset
+              const targets = [
+                new Vec3(blockPos.x, targetY, blockPos.z),
+                new Vec3(blockPos.x + 1, targetY, blockPos.z),
+                new Vec3(blockPos.x, targetY, blockPos.z + 1)
+              ];
+              
+              for (const target of targets) {
+                try {
+                  await actions.navigate.goto(target, {
+                    tolerance: 1,
+                    avoidHoles: false,
+                    maxDrop: 1,  // Only allow 1-block drops
+                    timeoutMs: 3000
+                  });
+                  if (await inReach()) return;
+                } catch (e) {
+                  lastError = e;
+                  if (e.message?.includes('Rate limit')) break;
                 }
-              } catch (navError) {
-                lastError = navError;
               }
             }
 
@@ -673,11 +731,11 @@ class ContextBuilder {
   buildControlAPI() {
     return {
       success: (data) => {
-        throw { __mfSuccess: true, data };
+        return { __mfSuccess: true, data };
       },
 
       fail: (message, data) => {
-        throw { __mfFailure: true, message, data };
+        return { __mfFailure: true, message, data };
       },
 
       cancelToken: this.cancelToken

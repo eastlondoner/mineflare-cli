@@ -193,16 +193,7 @@ class ProgramSandbox {
           // Handle the promise result
           Promise.resolve(executionResult)
             .then(resolve)
-            .catch((error) => {
-              // Treat control.success/control.fail throws as normal completions
-              if (error && typeof error === 'object') {
-                if (error.__mfSuccess || error.__mfFailure) {
-                  return resolve(error);
-                }
-              }
-              
-              reject(error);
-            });
+            .catch(reject);
         } catch (error) {
           reject(error);
         }

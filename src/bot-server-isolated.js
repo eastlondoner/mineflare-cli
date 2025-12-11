@@ -847,6 +847,36 @@ class IsolatedBotServer {
       isDay: dayTime >= 0 && dayTime < 12000
     };
   }
+
+  async analyzePath(target, timeoutMs = 10000) {
+    if (!this.botState.connected) {
+      throw new ProgramError(
+        ErrorCode.BOT_DISCONNECTED,
+        'Bot is not connected to server'
+      );
+    }
+
+    const response = await this.requestBotResponse(
+      'analyze_path',
+      'analyze_path_response',
+      {
+        x: target.x,
+        y: target.y,
+        z: target.z,
+        timeout: Math.min(timeoutMs / 2, 5000) // Per-pass timeout
+      },
+      timeoutMs
+    );
+
+    if (response.error) {
+      throw new ProgramError(
+        ErrorCode.OPERATION_FAILED,
+        `Path analysis failed: ${response.error}`
+      );
+    }
+
+    return response.analysis;
+  }
   
   async fetchProgramSnapshot() {
     if (!this.botState.connected) {
@@ -940,6 +970,9 @@ class IsolatedBotServer {
       getTime: async () => {
         return server.getWorldTime();
       },
+      analyzePath: async (target, timeoutMs) => {
+        return server.analyzePath(target, timeoutMs);
+      },
       bot: {
         entity: {
           position: safePosition,
@@ -977,15 +1010,15 @@ class IsolatedBotServer {
       craft: 15000,
       place: 10000,
       equip: 8000,
-      goto: 20000,
+      goto: 600000,  // 10 minutes - safety fallback only, step limit handles normal cases
       wait: (instruction?.params?.duration || 1000) + 2000
     };
 
     const inferredTimeout = typeTimeouts[instruction?.type] || 10000;
-    const timeoutMs = Math.max(
-      5000,
-      instruction?.params?.timeout || inferredTimeout
-    );
+    // For goto, always use the type timeout (step limit handles the real limiting)
+    const timeoutMs = instruction?.type === 'goto' 
+      ? inferredTimeout 
+      : Math.max(5000, instruction?.params?.timeout || inferredTimeout);
 
     try {
       const instructionPayload = {
