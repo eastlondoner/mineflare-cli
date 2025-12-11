@@ -1,6 +1,6 @@
 {
   "name": "mineflare-cli",
-  "version": "1.4.2",
+  "version": "1.4.3",
   "repository": {
     "type": "git",
     "url": "https://github.com/eastlondoner/mineflare-cli.git"
@@ -40,7 +40,13 @@
     "release:minor": "npm version minor && git push && git push --tags",
     "release:major": "npm version major && git push && git push --tags"
   },
-  "keywords": ["minecraft", "bot", "mineflare", "ai", "mineflayer"],
+  "keywords": [
+    "minecraft",
+    "bot",
+    "mineflare",
+    "ai",
+    "mineflayer"
+  ],
   "author": "",
   "license": "ISC",
   "description": "AI-controlled Minecraft bot with HTTP API and CLI interface",
