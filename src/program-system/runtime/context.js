@@ -1,5 +1,6 @@
 const { Vec3, BotState, ProgramError, ErrorCode } = require('../sdk/types');
 const OperationBudget = require('./budget');
+const { isInAnyVolume, describeViolation } = require('../sdk/volumes');
 
 // Import new SDK utilities
 const flowUtils = require('../sdk/flow');
@@ -21,6 +22,44 @@ class ContextBuilder {
       callbacks: []
     };
     this.logs = [];
+    
+    // Volume constraints for world-modifying actions
+    this.allowedVolumes = options.allowedVolumes || null;
+    this.volumeOrigin = options.volumeOrigin 
+      ? new Vec3(options.volumeOrigin.x, options.volumeOrigin.y, options.volumeOrigin.z)
+      : null;
+    this.volumeOriginYaw = options.volumeOriginYaw || 0;
+  }
+  
+  /**
+   * Check if a position is within the allowed volumes for world-modifying actions
+   * @param {Vec3|{x,y,z}} position - Position to check
+   * @returns {void}
+   * @throws {ProgramError} If position is outside allowed volumes
+   */
+  checkVolumeConstraint(position) {
+    // If no volumes are defined, allow all (for legacy programs without dig/place)
+    if (!this.allowedVolumes || this.allowedVolumes.length === 0) {
+      return;
+    }
+    
+    // If no origin was captured, we can't enforce volumes
+    if (!this.volumeOrigin) {
+      console.warn('[VOLUME] No volume origin captured, skipping volume check');
+      return;
+    }
+    
+    const pos = position instanceof Vec3 
+      ? position 
+      : new Vec3(position.x, position.y, position.z);
+    
+    if (!isInAnyVolume(pos, this.allowedVolumes, this.volumeOrigin, this.volumeOriginYaw)) {
+      const violation = describeViolation(pos, this.allowedVolumes, this.volumeOrigin, this.volumeOriginYaw);
+      throw new ProgramError(
+        ErrorCode.VOLUME_VIOLATION,
+        `Action blocked: ${violation}. World-modifying actions are only allowed within declared allowedVolumes.`
+      );
+    }
   }
 
   build() {
@@ -347,6 +386,9 @@ class ContextBuilder {
             Math.floor(position.y),
             Math.floor(position.z)
           );
+          
+          // Check volume constraints before digging
+          this.checkVolumeConstraint(blockPos);
 
           const ensureBlockMatches = async () => {
             if (!expect) return;
@@ -601,6 +643,9 @@ class ContextBuilder {
               Math.floor(position.z)
             );
 
+            // Check volume constraints before placing
+            this.checkVolumeConstraint(nearbyPos);
+
             await this.botServer.executeInstruction({
               type: 'place',
               params: {
@@ -613,6 +658,51 @@ class ContextBuilder {
           }
 
           return { success: true };
+        }
+      };
+    }
+
+    // Building/placing actions
+    if (this.capabilities.has('place')) {
+      actions.build = {
+        placeBlock: async ({
+          position,
+          block,
+          face = { x: 0, y: 1, z: 0 }
+        }) => {
+          this.budget.check('place');
+
+          if (!this.botServer || !this.botServer.isConnected()) {
+            throw new ProgramError(ErrorCode.BOT_DISCONNECTED, 'Bot is not connected');
+          }
+
+          const blockPos = new Vec3(
+            Math.floor(position.x),
+            Math.floor(position.y),
+            Math.floor(position.z)
+          );
+
+          // Check volume constraints before placing
+          this.checkVolumeConstraint(blockPos);
+
+          try {
+            const result = await this.botServer.executeInstruction({
+              type: 'place',
+              params: {
+                x: blockPos.x,
+                y: blockPos.y,
+                z: blockPos.z,
+                block: block
+              }
+            });
+
+            return result;
+          } catch (error) {
+            throw new ProgramError(
+              ErrorCode.OPERATION_FAILED,
+              `Failed to place block: ${error.message}`
+            );
+          }
         }
       };
     }

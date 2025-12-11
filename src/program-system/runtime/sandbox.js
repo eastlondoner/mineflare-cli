@@ -1,5 +1,6 @@
 const vm = require('vm');
 const { ProgramError, ErrorCode } = require('../sdk/types');
+const { validateVolumes } = require('../sdk/volumes');
 
 class ProgramSandbox {
   constructor(capabilities = [], timeout = 900000) {
@@ -249,7 +250,8 @@ class ProgramSandbox {
       name: 'unnamed-program',
       version: '1.0.0',
       capabilities: [],
-      defaults: {}
+      defaults: {},
+      allowedVolumes: null
     };
   }
   
@@ -464,13 +466,39 @@ class ProgramSandbox {
         };
       }
       
+      // Check if program has world-modifying capabilities
+      const capabilities = programDef.capabilities || [];
+      const hasWorldModifyingCapabilities = capabilities.some(cap => 
+        cap === 'dig' || cap === 'place'
+      );
+      
+      // Require allowedVolumes for programs with dig or place capabilities
+      if (hasWorldModifyingCapabilities) {
+        if (!programDef.allowedVolumes) {
+          return {
+            valid: false,
+            error: 'Programs with "dig" or "place" capabilities must define allowedVolumes to specify where world-modifying actions are permitted'
+          };
+        }
+        
+        // Validate the volume definitions
+        const volumeValidation = validateVolumes(programDef.allowedVolumes);
+        if (!volumeValidation.valid) {
+          return {
+            valid: false,
+            error: `Invalid allowedVolumes: ${volumeValidation.error}`
+          };
+        }
+      }
+      
       return {
         valid: true,
         metadata: {
           name: programDef.name || 'unnamed-program',
           version: programDef.version || '1.0.0',
           capabilities: programDef.capabilities || [],
-          defaults: programDef.defaults || {}
+          defaults: programDef.defaults || {},
+          allowedVolumes: programDef.allowedVolumes || null
         }
       };
     } catch (error) {

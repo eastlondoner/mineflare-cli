@@ -92,12 +92,35 @@ class ProgramRunner {
       // Create sandbox
       this.sandbox = new ProgramSandbox(this.capabilities, this.timeout);
       
+      // Capture bot's starting position and yaw for volume constraints
+      let volumeOrigin = null;
+      let volumeOriginYaw = 0;
+      
+      try {
+        const botState = await this.botServer.getState();
+        if (botState && botState.position) {
+          volumeOrigin = {
+            x: botState.position.x,
+            y: botState.position.y,
+            z: botState.position.z
+          };
+          volumeOriginYaw = botState.orientation?.yaw || 0;
+        }
+      } catch (err) {
+        console.warn('[PROGRAM] Could not capture volume origin:', err.message);
+      }
+      
       // Create context
       this.contextBuilder = new ContextBuilder(
         this.botServer,
         this.capabilities,
         mergedArgs,
-        { seed: this.seed }
+        { 
+          seed: this.seed,
+          allowedVolumes: this.metadata.allowedVolumes || null,
+          volumeOrigin,
+          volumeOriginYaw
+        }
       );
       
       const context = this.contextBuilder.build();

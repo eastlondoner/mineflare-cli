@@ -138,6 +138,13 @@ Examples:
     const program = defineProgram({
       name: 'example',
       capabilities: ['move', 'dig'],
+      // Required for dig/place: define where actions are allowed
+      allowedVolumes: [
+        // localBox: easy box relative to bot's facing direction
+        { type: 'localBox', 
+          min: { forward: -5, right: -10, up: -3 },
+          max: { forward: 30, right: 10, up: 10 } }
+      ],
       async run(ctx) {
         const { bot, actions, log, control } = ctx;
         log.info('Hello from program!');
@@ -145,6 +152,14 @@ Examples:
       }
     });
     program
+
+  Volume Types (for allowedVolumes):
+    localBox  - Box using forward/right/up offsets (recommended)
+                { type: 'localBox', min: { forward, right, up }, max: { forward, right, up } }
+    sphere    - Sphere with center and radius
+                { type: 'sphere', center: { angle, pitch, distance }, radius }
+    cube      - Box using spherical coordinate corners
+                { type: 'cube', corners: [{ angle, pitch, distance }, ...] }
 
   AI Agent - Batch (generates JSON from natural language):
     $ bun mineflare agent "walk forward 10 blocks then jump"
@@ -1458,6 +1473,10 @@ const program = defineProgram({
   name: 'task-name',
   version: '1.0.0',
   capabilities: ['move', 'pathfind'],
+  // REQUIRED for dig/place capabilities - defines where actions are allowed
+  allowedVolumes: [
+    { type: 'localBox', min: { forward: -5, right: -20, up: -5 }, max: { forward: 50, right: 20, up: 20 } }
+  ],
   async run(ctx) {
     const { bot, actions, world, log, control } = ctx;
     const state = await bot.getState();
@@ -1469,11 +1488,27 @@ program
 
 AVAILABLE CAPABILITIES: move, dig, place, inventory, craft, pathfind
 
+VOLUME CONSTRAINTS (required for dig/place):
+Programs with 'dig' or 'place' capabilities MUST define allowedVolumes to prevent destroying player constructions.
+Volume types:
+- localBox (recommended): Box relative to bot's facing direction
+  { type: 'localBox', min: { forward: -5, right: -10, up: -3 }, max: { forward: 30, right: 10, up: 10 } }
+  forward: positive=ahead, negative=behind | right: positive=right, negative=left | up: positive=above, negative=below
+- sphere: Sphere around a point
+  { type: 'sphere', center: { angle: 0, pitch: 0, distance: 0 }, radius: 30 }
+
+Use cases for volumes:
+- Protect player constructions: exclude areas behind the bot where buildings are
+- Focus on specific target: small volume around a tree or ore vein
+- Quarry operations: define a pit area for mining
+- Farm plots: restrict harvesting to designated areas
+
 RULES:
 - bot.getState() is ASYNC: const state = await bot.getState()
 - Vec3 is GLOBAL: new Vec3(x, y, z)
 - sleep is GLOBAL: await sleep(1000)
 - End with just: program
+- ALWAYS include allowedVolumes when using dig or place capabilities
 
 APIs:
 - await bot.getState() → { position: {x,y,z}, health, food, onGround, inWater }
@@ -1509,6 +1544,10 @@ const program = defineProgram({
   name: 'collect-wood',
   version: '1.0.0',
   capabilities: ['move', 'pathfind', 'dig'],
+  // Allow digging in a large area ahead and to the sides, but not behind (protect base)
+  allowedVolumes: [
+    { type: 'localBox', min: { forward: -3, right: -30, up: -5 }, max: { forward: 60, right: 30, up: 20 } }
+  ],
   async run(ctx) {
     const { bot, actions, world, log, control } = ctx;
     const state = await bot.getState();
