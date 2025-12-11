@@ -95,7 +95,7 @@ jobs:
 
       - name: Build executable
         run: |
-          bun build \
+          bun scripts/build-with-version.js \
             --compile \
             --minify \
             --sourcemap \

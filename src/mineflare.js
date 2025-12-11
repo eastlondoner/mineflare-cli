@@ -169,6 +169,14 @@ Environment Variables:
   MC_USERNAME       Override bot username
 `);
 
+// Version command
+program
+  .command('version')
+  .description('Display the current version')
+  .action(() => {
+    console.log(VERSION);
+  });
+
 // Server commands
 const serverCmd = program
   .command('server')
