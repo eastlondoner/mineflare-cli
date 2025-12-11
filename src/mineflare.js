@@ -1441,9 +1441,9 @@ Generate the batch job JSON array now:`;
 
 // Agent-script command - AI-powered script generation with agentic loop
 // System prompt written to file to avoid HTTP/2 frame size limits
-const AGENT_SCRIPT_SYSTEM_PROMPT = `YOU ARE A CODE GENERATOR. OUTPUT ONLY JAVASCRIPT CODE. NO EXPLANATIONS. NO MARKDOWN. NO TOOL CALLS.
+const AGENT_SCRIPT_SYSTEM_PROMPT = `You are a Minecraft bot programmer. Your task is to write JavaScript programs that control a bot.
 
-DO NOT use any tools. DO NOT write files. DO NOT explain. JUST OUTPUT THE JAVASCRIPT CODE.
+IMPORTANT: You MUST write your code to the file .mineflare-agent-program.js using the write tool. Do not output code in your response text.
 
 Format:
 const program = defineProgram({
@@ -1541,10 +1541,12 @@ const program = defineProgram({
 });
 program
 
-NOW OUTPUT ONLY JAVASCRIPT CODE FOR THE TASK:`;
+Remember: Write your code to .mineflare-agent-program.js using the write tool.`;
 
 // Path for the context file that the agent will read
 const AGENT_CONTEXT_FILE = '.mineflare-agent-context.md';
+// Path for the program file that the agent will write
+const AGENT_PROGRAM_FILE = '.mineflare-agent-program.js';
 
 program
   .command('agent-script <prompt>')
@@ -1654,13 +1656,17 @@ ${prompt}
 `;
       writeContextFile(initialContext);
 
-      // Send minimal prompt - agent reads context from file
-      let currentPrompt = `Read the file ${AGENT_CONTEXT_FILE} for instructions and context, then output ONLY the JavaScript code.`;
+      // Send minimal prompt - agent reads context from file and writes program to file
+      const programFilePath = path.join(process.cwd(), AGENT_PROGRAM_FILE);
+      let currentPrompt = `Read the file ${AGENT_CONTEXT_FILE} for instructions and context, then write the JavaScript program to ${AGENT_PROGRAM_FILE}.`;
 
       for (let turn = 1; turn <= maxTurns; turn++) {
         console.log(`\n${'─'.repeat(60)}`);
         console.log(`📍 Turn ${turn}/${maxTurns}`);
         appendToLog(`--- Turn ${turn}/${maxTurns} ---`);
+        
+        // Delete program file before each turn to ensure we don't read stale output
+        try { fs.unlinkSync(programFilePath); } catch (e) { /* ignore if doesn't exist */ }
         
         // Submit to agent with retry logic for HTTP/2 errors
         // Always create fresh agent to avoid HTTP/2 frame size issues from context accumulation
@@ -1685,34 +1691,41 @@ ${prompt}
           console.log('\n');
         }
 
-        // Extract JavaScript from response
-        let scriptSource = fullResponse.trim();
-        
-        // Remove markdown code fences if present
-        const codeMatch = scriptSource.match(/```(?:javascript|js)?\s*([\s\S]*?)```/);
-        if (codeMatch) {
-          scriptSource = codeMatch[1].trim();
-        }
-        
-        // Check if agent says task is complete
-        if (scriptSource.toLowerCase().includes('task complete') || 
-            scriptSource.toLowerCase().includes('goal accomplished') ||
-            scriptSource.toLowerCase().includes('finished successfully')) {
+        // Check if agent says task is complete (in response text)
+        if (fullResponse.toLowerCase().includes('task complete') || 
+            fullResponse.toLowerCase().includes('goal accomplished') ||
+            fullResponse.toLowerCase().includes('finished successfully')) {
           console.log('\n✅ Agent indicates task is complete');
           break;
         }
 
-        // Validate it looks like a program
-        if (!scriptSource.includes('defineProgram') && !scriptSource.includes('program')) {
-          console.log('\n⚠️ Response does not appear to be a valid program');
+        // Read the program from the file (agent should have written it)
+        let scriptSource;
+        try {
+          scriptSource = fs.readFileSync(programFilePath, 'utf-8').trim();
+        } catch (readError) {
+          console.log('\n⚠️ Agent did not write program file');
           if (options.verbose) {
-            console.log('Response:', scriptSource.substring(0, 500));
+            console.log('Response:', fullResponse.substring(0, 500));
+          }
+          currentPrompt = `You did not write the program to ${AGENT_PROGRAM_FILE}. Please read ${AGENT_CONTEXT_FILE} and write a JavaScript program using defineProgram() to the file ${AGENT_PROGRAM_FILE}.`;
+          continue;
+        }
+
+        // Validate it looks like a program
+        if (!scriptSource.includes('defineProgram')) {
+          console.log('\n⚠️ File does not contain a valid program');
+          if (options.verbose) {
+            console.log('File contents:', scriptSource.substring(0, 500));
           }
           
           // Ask agent to try again
-          currentPrompt = `That response was not a valid JavaScript program. Please write a program using defineProgram() to accomplish the task. Remember to output ONLY the JavaScript code.`;
+          currentPrompt = `The file ${AGENT_PROGRAM_FILE} does not contain a valid program. Please write a program using defineProgram() to accomplish the task.`;
           continue;
         }
+        
+        // Clean up the program file for next iteration
+        try { fs.unlinkSync(programFilePath); } catch (e) { /* ignore */ }
 
         console.log('\n📜 Generated script:');
         // Show abbreviated script unless verbose
@@ -1810,14 +1823,14 @@ ${prompt}
 
 ## Instructions
 Based on the result, either:
-1. Write the next JavaScript program (using defineProgram) to continue toward the goal
+1. Write the next JavaScript program (using defineProgram) to ${AGENT_PROGRAM_FILE} to continue toward the goal
 2. If done, respond with "TASK COMPLETE"
 
-OUTPUT ONLY CODE OR "TASK COMPLETE":
+Write your program to ${AGENT_PROGRAM_FILE} or respond with "TASK COMPLETE".
 `;
         writeContextFile(followUpContext);
         
-        currentPrompt = `Read ${AGENT_CONTEXT_FILE} for the execution result and next instructions.`;
+        currentPrompt = `Read ${AGENT_CONTEXT_FILE} for the execution result, then write the next program to ${AGENT_PROGRAM_FILE} or respond "TASK COMPLETE".`;
 
         // Check if we should stop
         if (execResult.success && execResult.result?.message?.toLowerCase().includes('complete')) {
@@ -1831,10 +1844,13 @@ OUTPUT ONLY CODE OR "TASK COMPLETE":
       console.log(`📝 Full session log: ${agentLogPath}`);
       appendToLog(`=== Agent Session Ended: ${new Date().toISOString()} ===`);
       
-      // Clean up context file (but keep log file for debugging)
+      // Clean up context and program files (but keep log file for debugging)
       try {
         if (fs.existsSync(contextFilePath)) {
           fs.unlinkSync(contextFilePath);
+        }
+        if (fs.existsSync(programFilePath)) {
+          fs.unlinkSync(programFilePath);
         }
       } catch (e) {
         // Ignore cleanup errors
